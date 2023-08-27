@@ -1,0 +1,3 @@
+STAx are stateables generated with graphviz.
+
+https://graphviz.org/Gallery/directed/fsm.html
