@@ -12,10 +12,10 @@ Is a experimental file compressor for text and is based on paq8 model. Intended 
 |paq8pxd_v107.-s8|enwik8|DIC-(internal)|100000000|16182108|11473|2264|
 |paq8n.-8|enwik8|-|100000000|17916450|5663|1567|
 |paq8n.-8|enwik8|WIT,DIC|57088865|16905680|3457|1567|
-|paq8o10t.-8|enwik8|100000000|17772821|6017|1517|
+|paq8o10t.-8|enwik8||100000000|17772821|6017|1517|
 |paq8o10t.-8|enwik8|WIT,DIC|57088865|17101300|2914|1517|
-|paq8px_v208fix1.-8|enwik8|100000000|
-|paq8px_v208fix1.-8|enwik8|WIT,DIC|57088865|
+|paq8px_v208fix1.-8|enwik8||100000000|16499082|23498|2163|
+|paq8px_v208fix1.-8|enwik8|WIT,DIC|57088865|15969942|14087|2163|
 |paq8hp12any|enwik8|WIT,DIC|57088865|16131394|2393|1813|
 |paq8hp12any|enwik9|WIT,DIC|593869820|130573629|24396|1813|
 
