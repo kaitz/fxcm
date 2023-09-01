@@ -30,9 +30,9 @@ cmix
 #define TEXTMODE             // comment this to get version 2 for dictionary proccessed input (ex. drt, paq8hp -0)
 
 #ifdef TEXTMODE
-#define VERSION 1
+#define VERSION 3
 #else 
-#define VERSION 2
+#define VERSION 4
 #endif
 
 #include <stdio.h>
@@ -1409,6 +1409,9 @@ bool vec_empty(vec *o){
     return (o->size==0)?true:false;
 }
 
+int vec_prev(vec *o){
+    return (o->size>1)?(o->cxt[o->size-2]):0;
+}
 // This part is based on cmix BracketContext
 struct BracketContext {
     U32 context;           // bracket byte and distance
@@ -1439,6 +1442,9 @@ struct BracketContext {
         bool found=false;
         for (int i=0;i<elementCount;i=i+2) if (element[i]==b&&element[i+1]==c) found=true;
         return found;
+    }
+    int last(){
+        return vec_prev(&active);
     }
     void __attribute__ ((noinline)) Update(int byte) {
         bool pop=false;
@@ -1563,9 +1569,9 @@ static const U32 primes[14]={0, 257,251,241,239,233,229,227,223,211,199,197,193,
 static const U32 tri[4]={0,4,3,7}, trj[4]={0,6,6,12};
 
 // Parameters
-const U32 m_e[9]={8,8,8,1,1,1,1,1,0}; // mixer error
-const U32 m_s[9]={194, 237, 204, 70, 54, 55,55, 70, 6};// mixer shift
-const U32 m_m[9]={36,   69,  19, 34, 23, 24,24, 34,4};// mixer error mul
+const U32 m_e[10]={8,8,8,1,1,1,1,1,1,0}; // mixer error
+const U32 m_s[10]={194, 237, 204, 70, 54, 55,55, 70,55, 6};// mixer shift
+const U32 m_m[10]={36,   69,  19, 34, 23, 24,24, 34,24,4};// mixer error mul
 
 const U32 c_r[22]= { 3,  4,  6,  4,  6,  6,  2,  3,  3,  3,  6,  4,  3,  4,  5,  6,  2,  6,  4,  4,  4,  4};  // contextmap run mul
 const U32 c_s[22]= {28, 26, 28, 31, 34, 31, 33, 33, 35, 35, 29, 32, 33, 34, 30, 36, 31, 32, 32, 32, 32, 32};  // contextmap pr mul
@@ -1618,7 +1624,7 @@ void PredictorInit() {
     for (int i=0;i<8;i++){ 
         scmA[i].Init(8); 
     }
-    mxA[0].Init(   64,m_s[0],m_e[0],m_m[0]);
+    //mxA[0].Init(   64,m_s[0],m_e[0],m_m[0]);
     mxA[1].Init(2*256,m_s[1],m_e[1],m_m[1]);
     mxA[2].Init(6*256,m_s[2],m_e[2],m_m[2]);
     mxA[3].Init(7*256,m_s[3],m_e[3],m_m[3]);
@@ -1626,8 +1632,8 @@ void PredictorInit() {
     mxA[5].Init(7*256,m_s[5],m_e[5],m_m[5]);
     mxA[6].Init(7*256,m_s[6],m_e[6],m_m[6]);
     mxA[7].Init(8*256,m_s[7],m_e[7],m_m[7]);
-    mxA[8].Init(8*7*2,m_s[8],m_e[8],m_m[8]);
-
+    mxA[8].Init(8*256,m_s[8],m_e[8],m_m[8]);
+    mxA[9].Init(8*7*2,m_s[9],m_e[9],m_m[9]);
     
     apmA[0].Init(256);
     apmA[1].Init(0x8000*2);
@@ -1638,17 +1644,17 @@ void PredictorInit() {
     rcmA[0].Init(1*4096*4096,6);
 
     x.mxInputs[0].ncount=396;
-    x.mxInputs[1].ncount=8;
+    x.mxInputs[1].ncount=9;
     
     for (int j=0;j<2;j++)  {
         x.mxInputs[j].ncount=(x.mxInputs[j].ncount+15)&-16;
         alloc1(x.mxInputs[j].n,x.mxInputs[j].ncount+32,x.mxInputs[j].ptr,32);
     }     
     // Provide inputs array info to mixers
-    for (int i=0;i<8;i++)
+    for (int i=1;i<9;i++)
          mxA[i].setTxWx(x.mxInputs[0].ncount,&x.mxInputs[0].n[0]);
     // Final mixer
-    mxA[8].setTxWx(x.mxInputs[1].ncount,&x.mxInputs[1].n[0]);
+    mxA[9].setTxWx(x.mxInputs[1].ncount,&x.mxInputs[1].n[0]);
 
     cmC[0].Init( 16*4096*4096,3|(c_r[0]<<8)|(c_s[0]<<16)|(c_s2[0]<<24),c_s3[0],&STA5[0][0],c_s4[0],c_s5[0],0xf0);
     cmC[1].Init( 16*4096*4096,1|(c_r[1]<<8)|(c_s[1]<<16)|(c_s2[1]<<24),c_s3[1],&STA1[0][0],c_s4[1],c_s5[1],0xf0);
@@ -1689,7 +1695,7 @@ void PredictorInit() {
 void PredictorFree(){
     smA[0].Free(); 
     for (int i=0;i<8;i++) scmA[i].Free();
-    for (int i=0;i<9;i++) mxA[i].Free();
+    for (int i=1;i<10;i++) mxA[i].Free();
     for (int i=0;i<27;i++) cmC[i].Free();
     for (int i=0;i<6;i++) apmA[i].Free();
     rcmA[1].Free();
@@ -2054,7 +2060,6 @@ int modelPrediction(int c0,int bpos,int c4){
             // remove quote content if any of the fallowing is true
             const int word3bit=(words&7);
             if ( ((word3bit==4)&& (c1==SPACE) && (c2==APOSTROPHE))||            // "x' " where x is any letter in word
-            //((qocxt.context>>8)==0x27)&&fc=='M' && (c2=='M')&&(c1=='M') ||    // "x'@" where x is number               // this is somehow semi good-bad
              ((c1==ATSIGN) && (numbers&4) && (c2==APOSTROPHE)) ||               // "x'@" where x is number               // this is somehow semi good-bad //(c3>='0' && c3<='9')
              ((word3bit==4) && (c1==ATSIGN) && (c2==APOSTROPHE))                // "x'@" where x is any letter in word   // this is somehow semi good-bad
               )qocxt.Update(qocxt.context>>8); 
@@ -2144,10 +2149,9 @@ int modelPrediction(int c0,int bpos,int c4){
             oState=nState;
         }
         ttype=(ttype<<3)+nState;
-
-        const U8 brcontext=(brcxt.context>>8);       
-        
-        cmC[26].set((qocxt.context&0xff00)+c1+(brcontext<<24));
+     
+        const U8 brcontext=(brcxt.context>>8);
+        cmC[26].set((qocxt.context&0xff00)+c1+(w4&12)*256+((brcontext+ brcxt.last())<<24));
         rcmA[0].set(word3*53+c1+193 * (ttype & 0x7fff),c1);
         //Retrun index of bracket or quote in array, if found add 1 to result. value is in range 1-7, 0 if not found
         w4br=0;
@@ -2233,7 +2237,7 @@ int modelPrediction(int c0,int bpos,int c4){
     
         cmC[14].set((x4 & 0xff00ff) );
         cmC[14].set((x4 & 0xff0000ff) | ((ttype & 0xe07) << 8));
- 
+
         // Indirect
         U32   f=(c4>>8)&0xffff;
         t2[f]=(t2[f]<<8)|c1;
@@ -2251,7 +2255,7 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC[14].set((d4& 0xffff) | ((ttype & 0x38) << 16));
         cmC[13].set((f& 0xffffff));
     
-        cmC[15].set((c1 << 8) | (d >> 2)| (fc << 16));
+        cmC[15].set((c1 << 8) | (d >> 2)| (fc << 16));  // fixme
         cmC[15].set((c4 & 0xffff)+(c2==c3?1:0));
    
         cmC[16].set((ttype & 0x3ffff) | ((w4 & 255) << 24));
@@ -2259,12 +2263,17 @@ int modelPrediction(int c0,int bpos,int c4){
   
         cmC[17].set(257 * word1+brcontext + 193 * (ttype & 0x7fff));
         cmC[17].set(fc|((w4r & 0xfff) << 9) | ((c1  ) << 24));//end is good
-        cmC[17].set((x4 & 0xffff00)| brcontext);
+        cmC[17].set((x4 & 0xffff00)| brcontext+(brcxt.last()<< 24)); //end bad (last)
 
         cmC[18].set(d);
         cmC[18].set(((d& 0xffff00)>>4) | ((w4 & 0xf) )| ((ttype & 0xfff) << 20));
         cmC[18].set((x4 >>16) | ((w4 & 255) << 24));
+        #ifdef TEXTMODE
         cmC[18].set((c1 << 11) | ((f & 0xffffff)>>16) );
+        #else
+        if (c1>127)cmC[18].set(( ((w4 & 12)*256)+c1 << 11) | ((f & 0xffffff)>>16) );
+        else cmC[18].set((c1 << 11) | ((f & 0xffffff)>>16) );
+        #endif
         cmC[18].set(fc | ((c4 & 0xffff)<< 9)| ((w4 & 0xff) << 24)); 
         cmC[18].set(((f >> 16) )| ((w4 & 0x3c)<< 25 )| (((ttype & 0x1ff))<< 16 ));
 
@@ -2417,9 +2426,9 @@ int modelPrediction(int c0,int bpos,int c4){
     // at bpos=6   context is bit 111111xx from c0, was byte(1-2) a word or space and bit pos
     // at bpos=7   context is bit 1111111x from c0, was byte(1)   a word or space and bit pos
     mxA[4].cxt=bpos*256 + (((( (numbers|words)<< bpos)&255)>> bpos) | (c&255));
-    // mixer 8 - final mixer
+    // mixer 9 - final mixer
     // at bpos=0-7   context is sum of context order(3-5,6,8) isState counts (max 6), bracket or quote state(0,1) and last 1 bit2word
-    mxA[8].cxt=(ord*8 + (w4br?1:0)*4 + (w4&3));
+    mxA[9].cxt=(ord*8 + (w4br?1:0)*4 + (w4&3));
     
     // mixer 5 
     // at bpos=0   context is bit xxxxxxxx from c0, first char type state(0,1) xxxx1xxx, 2 bit2word            1111xxxx
@@ -2457,8 +2466,12 @@ int modelPrediction(int c0,int bpos,int c4){
     // mixer 6
     // at bpos=0-7   context is sum of context words isState counts (max 6), first char type state(0,1), 2 bit2word of byte(3,4) and 1 bit3word of byte(2)
     mxA[6].cxt=ord2*256 + (w4&0xf0) + ((ttype&0x38) >> 2) + fc1;
- 
-    x.mxInputs[1].add(mxA[0].p1());
+    // mixer 8 
+    if (bpos>2) 
+        mxA[8].cxt= wrt_t[c0b&255]*256 +(w4br)*32 + (words&7)*4 + fc1+(ismatch?2:0);
+    else
+        mxA[8].cxt= (ttype&3)*256 +(w4br)*16 + (words&7)*2 + fc1+(ismatch?128:0);  // fixme
+    //x.mxInputs[1].add(mxA[0].p1());
     x.mxInputs[1].add(mxA[1].p1());
     x.mxInputs[1].add(mxA[2].p1());
     x.mxInputs[1].add(mxA[3].p1());
@@ -2466,14 +2479,15 @@ int modelPrediction(int c0,int bpos,int c4){
     x.mxInputs[1].add(mxA[5].p1());
     x.mxInputs[1].add(mxA[6].p1());
     x.mxInputs[1].add(mxA[7].p1());
-
-    return mxA[8].p();
+    x.mxInputs[1].add(mxA[8].p1());
+    return mxA[9].p();
 }
 
 /*
 int fcolors[8]={15,7,8,3,9,1,4,12};
 HANDLE  hConsole;
 */
+int rate=6;
 void update() {
     x.c0+=x.c0+x.y;
     if (x.c0>=256) {
@@ -2481,13 +2495,13 @@ void update() {
         x.c0=1;
         ++x.blpos;
         if ((fails&255)==0) {
-            for (int i=1;i<7;i++) mxA[i].elim=max(256,mxA[i].elim+1);
+            for (int i=1;i<9;i++) if (i!=7)mxA[i].elim=max(256,mxA[i].elim+1);
         }else{ 
-            for (int i=1;i<7;i++) mxA[i].elim=min(16,mxA[i].elim-1);
+            for (int i=1;i<9;i++) if (i!=7)mxA[i].elim=min(16,mxA[i].elim-1);
         }
         /*
         hConsole = GetStdHandle(STD_OUTPUT_HANDLE); 
-        int color1=fcolors[((brcxt.context&0xff))?7:1];
+        int color1=fcolors[(brcxt.context&0xff)?7:1];
         SetConsoleTextAttribute(hConsole, color1);
      
         if( (x.c4&0xff)<=32 ) {
@@ -2496,12 +2510,12 @@ void update() {
         } else
           printf("%c",(x.c4&0xff));
         */
-       
+       rate=6 + (x.blpos>14*256*1024) + (x.blpos>28*512*1024);
     }
     x.bpos=(x.bpos+1)&7;
     x.bposshift=7-x.bpos;
     x.c0shift_bpos=(x.c0<<1)^(256>>(x.bposshift));
-    mxA[0].update(x.y);
+    //mxA[0].update(x.y);
     mxA[1].update(x.y);
     mxA[2].update(x.y);
     mxA[3].update(x.y);
@@ -2510,6 +2524,7 @@ void update() {
     mxA[6].update(x.y);
     mxA[7].update(x.y);
     mxA[8].update(x.y);
+    mxA[9].update(x.y);
     //printf("mixer 0 predictor count %d\n",x.mxInputs[0].ncount);
     x.mxInputs[0].ncount=0;
     //printf("mixer 1 predictor count %d\n",x.mxInputs[1].ncount);
@@ -2525,7 +2540,7 @@ void update() {
   
     pr=modelPrediction(x.c0,x.bpos,x.c4);
     
-    int rate=6 + (x.blpos>14*256*1024) + (x.blpos>28*512*1024);
+    
     int pt, pu=(apmA[0].p(pr, x.c0, 3,x.y)+7*pr+4)>>3, pv, pz=failcount+1;
 
     pz+=tri[(fails>>5)&3];
@@ -2536,12 +2551,13 @@ void update() {
 
     pu=apmA[3].p(pu,   ((x.c0*2)^AH1)&0x3ffff, rate,x.y);
     pv=apmA[1].p(pr,   ((x.c0*8)^hash(29,failz&2047))&0xffff, rate+1,x.y);
-    pv=apmA[4].p(pv,          hash(x.c0,w4 & 0xfffc,wtype & 0x1ff)&0x1ffff, rate,x.y);
+    pv=apmA[4].p(pv,          hash(x.c0,w4 & 0xfffc,(wtype & 0x1ff))&0x1ffff, rate,x.y);
     pt=apmA[2].p(pr, ( (x.c0*32)^AH2)&0xffff, rate,x.y);
     pz=apmA[5].p(pu,   ((x.c0*4)^hash(min(9,pz),x5&0x80ff))&0x1ffff, rate,x.y);
     
     if (fails&255) pr=(pt*6+pu  +pv*11+pz*14 +31)>>5;
     else           pr=(pt*4+pu*5+pv*12+pz*11 +31)>>5;
+
 }
 
 //////////////////////////// Encoder ////////////////////////////
