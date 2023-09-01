@@ -23,5 +23,7 @@ Is a experimental file compressor for text and is based on paq8 model. Intended 
 |paq8hp12any|enwik8|WIT,DIC|57088865|16131394|2393|1813|
 |paq8hp12any|enwik9|WIT,DIC|593869820|130573629|24396|1813|
 
+fxcm v1,3,.. is for enwi8, enwik9 or any wiki dump.
+​fxcm v2,4,.. is when wiki dump is preprocessed.
 
 Results: https://docs.google.com/document/d/1AGx--3zFy6raMNm5diAxk6GPBUJrxLgaxM9LTsMF1RE/
