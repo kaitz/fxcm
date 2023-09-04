@@ -27,12 +27,12 @@ cmix
 
 */
 
-#define TEXTMODE             // comment this to get version 6 for dictionary proccessed input (ex. drt, paq8hp -0)
+#define TEXTMODE             // comment this to get version 8 for dictionary proccessed input (ex. drt, paq8hp -0)
 
 #ifdef TEXTMODE
-#define VERSION 5
+#define VERSION 7
 #else 
-#define VERSION 6
+#define VERSION 8
 #endif
 
 #include <stdio.h>
@@ -2197,10 +2197,19 @@ int modelPrediction(int c0,int bpos,int c4){
             }
         }
         #ifdef TEXTMODE
-        if (col>2 && c1>ATSIGN  ||col>2 && !(c1>='a' && c1<='z') )  fccxt.Update(c1);
+        if (col>2 && c1>ATSIGN  ||col>2 && !(c1>='a' && c1<='z') ) {
         #else
-        if (col>2 && c1>ATSIGN)  fccxt.Update( c1 );
+        if (col>2 && c1>ATSIGN) { 
         #endif
+            // Befor updateing first char context look:
+            // if link or template ended and remove any vertical bars |.  [xx|xx] {xx|xx}
+            if ((fccxt.context>>8)==VERTICALBAR && (c1==SQUARECLOSE || c1==CURLYCLOSE)) while( (fccxt.context>>8)==VERTICALBAR) fccxt.Update(10);
+            // if html link ends with space or ]
+            if ((fccxt.context>>8)==COLON && (c1==SPACE || c1==SQUARECLOSE)) while( (fccxt.context>>8)==COLON) fccxt.Update(10);
+            
+            fccxt.Update(c1);
+        }
+        
         const int above=buffer[(nl1+col)&BMASK];
         const int above1=buffer[(nl1+col-1)&BMASK];
         if (fc==SQUAREOPEN && c1==SPACE) { 
