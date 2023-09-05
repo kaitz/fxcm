@@ -1693,6 +1693,7 @@ void PredictorFree(){
     free(x.mxInputs[1].ptr);    
     brcxt.Free();
     qocxt.Free();
+    fccxt.Free();
 }
   
 int buf(int i){
