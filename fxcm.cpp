@@ -30,9 +30,9 @@ cmix
 #define TEXTMODE             // comment this to get version 8 for dictionary proccessed input (ex. drt, paq8hp -0)
 
 #ifdef TEXTMODE
-#define VERSION 7
+#define VERSION 9
 #else 
-#define VERSION 8
+#define VERSION 10
 #endif
 
 #include <stdio.h>
@@ -1523,7 +1523,7 @@ struct BracketContext {
 const U8 brackets[8]={'(',')', CURLYOPENING,CURLYCLOSE, '[',']', LESSTHAN,GREATERTHAN};
 const U8 quotes[4]={APOSTROPHE,APOSTROPHE,QUOTATION,QUOTATION}; // keep track of ' and " as quotes
 // Keep track of first char including some brackets
-const U8 fchar[18]={ATSIGN,10, 96,10, COLON,10, LESSTHAN,GREATERTHAN,EQUALS,10,SQUAREOPEN,SQUARECLOSE,CURLYOPENING,CURLYCLOSE,'*',10,VERTICALBAR,10};
+const U8 fchar[20]={ATSIGN,10, 96,10, COLON,10, LESSTHAN,GREATERTHAN,EQUALS,10,SQUAREOPEN,SQUARECLOSE,CURLYOPENING,CURLYCLOSE,'*',10,VERTICALBAR,10,31,10};
 inline U32 hash(U32 a, U32 b, U32 c=0xffffffff) {
     U32 h=a*110002499u+b*30005491u+c*50004239u; 
     return h^h>>9^a>>3^b>>3^c>>4;
@@ -1641,7 +1641,7 @@ void PredictorInit() {
     mxA[3].Init(7*256,m_s[3],m_e[3],m_m[3]);
     mxA[4].Init(8*256,m_s[4],m_e[4],m_m[4]);
     mxA[5].Init(7*256,m_s[5],m_e[5],m_m[5]);
-    mxA[6].Init(7*256,m_s[6],m_e[6],m_m[6]);
+    mxA[6].Init(7*256*4,m_s[6],m_e[6],m_m[6]);
     mxA[7].Init(8*256,m_s[7],m_e[7],m_m[7]);
     mxA[8].Init(8*256,m_s[8],m_e[8],m_m[8]);
     mxA[9].Init(8*7*2,m_s[9],m_e[9],m_m[9]);
@@ -1704,7 +1704,7 @@ void PredictorInit() {
     #if defined(TEXTMODE)
     fccxt.Init(&fchar[0],20,false,512*2);
     #else
-    fccxt.Init(&fchar[0],18);
+    fccxt.Init(&fchar[0],20);
     #endif
 }
   
@@ -1996,7 +1996,20 @@ int FindQy(int b){
     }
     return found;
 }
-
+// In first char context find
+U8 qy1[10]= {ATSIGN, 96, COLON, LESSTHAN,EQUALS,'*',VERTICALBAR,CURLYOPENING,SQUAREOPEN,31};
+int FindQy2(int b){
+    int found=-1;
+    for (int i=0;i<9;i++) {
+        if (qy1[i]==b) {
+            found=i;
+            break;
+        }
+    }
+    if (found==8) found=1; //SQUAREOPEN as 96
+    return min(7,found+1);
+}
+U32 fqcxt=0;
 int modelPrediction(int c0,int bpos,int c4){
     int i,c;
     U32 h,j;
@@ -2097,7 +2110,7 @@ int modelPrediction(int c0,int bpos,int c4){
                 numlen0=min(19,numlen0+1);mybenum=0;
             }else{
             
-                if (numlen0 ||((numbers&&0xf)==0)){
+                if (numlen0 ||((numbers&0xf)==0)){
                     number1=number0,numlen1=numlen0,number0=numlen0=0;
                 }
                 if (numlen1<=2 &&numlen1&&((numbers&5)==5) && numlen0==0 && c2=='.') mybenum=2;
@@ -2205,11 +2218,13 @@ int modelPrediction(int c0,int bpos,int c4){
             // if link or template ended and remove any vertical bars |.  [xx|xx] {xx|xx}
             if ((fccxt.context>>8)==VERTICALBAR && (c1==SQUARECLOSE || c1==CURLYCLOSE)) while( (fccxt.context>>8)==VERTICALBAR) fccxt.Update(10);
             // if html link ends with space or ]
-            if ((fccxt.context>>8)==COLON && (c1==SPACE || c1==SQUARECLOSE)) while( (fccxt.context>>8)==COLON) fccxt.Update(10);
+            if (((fccxt.context>>8)==COLON || (fccxt.context>>8)==31 ) && (c1==SPACE || c1==SQUARECLOSE)) while( (fccxt.context>>8)==COLON || (fccxt.context>>8)==31) fccxt.Update(10);
             
+           
             fccxt.Update(c1);
         }
-        
+        // switch from possible category link to http link
+        if ((fccxt.context>>8)==COLON && c2=='/' && c1=='/') fccxt.Update(10),fccxt.Update(31);
         const int above=buffer[(nl1+col)&BMASK];
         const int above1=buffer[(nl1+col-1)&BMASK];
         if (fc==SQUAREOPEN && c1==SPACE) { 
@@ -2229,6 +2244,7 @@ int modelPrediction(int c0,int bpos,int c4){
         }
         const U8 fccontext =fccxt.context>>8;
         if(w4br==0 &&fccxt.context)w4br=FindQy(fccontext)+1;
+        fqcxt=FindQy2(fccontext);
         cmC[26].set((fccxt.context&0xff00)+c1+(w4&12)*256+((brcontext+ brcxt.last())<<24));
         if (fc=='*' && c1!=SPACE) {
             fc=min(c1,96);
@@ -2320,7 +2336,7 @@ int modelPrediction(int c0,int bpos,int c4){
         if (c1>127)cmC[18].set(( ((w4 & 12)*256)+c1 << 11) | ((f & 0xffffff)>>16) );
         else cmC[18].set((c1 << 11) | ((f & 0xffffff)>>16) );
         #endif
-        cmC[18].set(fc | ((c4 & 0xffff)<< 9)| ((w4 & 0xff) << 24)); 
+        cmC[18].set(fccontext*4+w4br | ((c4 & 0xffff)<< 9)| ((w4 & 0xff) << 24)); 
         cmC[18].set(((f >> 16) )| ((w4 & 0x3c)<< 25 )| (((ttype & 0x1ff))<< 16 ));
 
         cmC[19].set(((words& 0xff) )+((( spaces & 0xff))<< 8)+((w4&15)<< 16)+(((wtype>>3)&511)<< 21)+(fc1<<30));
@@ -2340,8 +2356,11 @@ int modelPrediction(int c0,int bpos,int c4){
 
         cmC[20].set((x4&0x80f00000)+((x4&0x0000f0ff) << 12) );
         cmC[20].set(word1*1471-word0*53+word2);
+        if (col==31) 
+        cmC[20].set( ((c4 &0xffff)<< 16));
+        else
         cmC[20].set(above | ((c4 &0xffff)<< 16)| (above1<< 8));
-        if (c1==12 ) 
+        if (c1==12 || fccontext==CURLYOPENING ) 
             cmC[21].set(0);
         else
             cmC[21].set(h+word2*79+word3*71);
@@ -2380,6 +2399,11 @@ int modelPrediction(int c0,int bpos,int c4){
     scmA[4].mix(0);
     scmA[5].mix(0);
     scmA[6].mix(0);
+    if ((fccxt.context>>8)==COLON && fccxt.last()==SQUAREOPEN) {
+      x.mxInputs[0].add(0);
+      x.mxInputs[0].add(0);
+    }
+    else
     scmA[7].mix(0);
 
     // order X
@@ -2418,7 +2442,7 @@ int modelPrediction(int c0,int bpos,int c4){
     
     // mixer 0
     // context is sum of context order(3-5,6,8) isState counts (max 6) and bit pos
-    mxA[0].cxt=(ord<<3) + bpos;
+    //mxA[0].cxt=(ord<<3) + bpos;
 
     // reference
     // if(bpos){	
@@ -2511,8 +2535,11 @@ int modelPrediction(int c0,int bpos,int c4){
     
     // mixer 6
     // at bpos=0-7   context is sum of context words isState counts (max 6), first char type state(0,1), 2 bit2word of byte(3,4) and 1 bit3word of byte(2)
-    mxA[6].cxt=ord2*256 + (w4&0xf0) + ((ttype&0x38) >> 2) + fc1;
+    mxA[6].cxt=(ord2*256 + (w4&0xf0) + ((ttype&0x38) >> 2))*4 + fqcxt;
+    
     // mixer 8 
+    // at bpos 0-2 bit3word, 1 bit3word of current bracket or quote, was byte(1,2,3) a word, first char flag, is a match
+    // at bpos 3-7 bit3word from c0, 1 bit3word of current bracket or quote, was byte(1,2,3) a word, first char flag, is a match
     if (bpos>2) 
         mxA[8].cxt= wrt_t[c0b&255]*256 +(w4br)*32 + (words&7)*4 + fc1+(ismatch?2:0);
     else
@@ -2532,17 +2559,6 @@ int modelPrediction(int c0,int bpos,int c4){
 /*
 int fcolors[8]={15,7,8,3,9,1,4,12};
 HANDLE  hConsole;
-U8 qy1[9]= {ATSIGN, 96, COLON, LESSTHAN,EQUALS,'*',VERTICALBAR,CURLYOPENING,SQUAREOPEN};
-int FindQy2(int b){
-    int found=-1;
-    for (int i=0;i<9;i++) {
-        if (qy1[i]==b) {
-            found=i;
-            break;
-        }
-    }
-    return min(7,found+1);
-}
 */
 int rate=6;
 void update() {
@@ -2556,17 +2572,6 @@ void update() {
         }else{ 
             for (int i=1;i<9;i++) if (i!=7)mxA[i].elim=min(16,mxA[i].elim-1);
         }
-        /*
-        hConsole = GetStdHandle(STD_OUTPUT_HANDLE); 
-        int color1=fcolors[(fccxt.context&0xff)?FindQy2(fccxt.context>>8):1];
-        SetConsoleTextAttribute(hConsole, color1);
-     
-        if( (x.c4&0xff)<=32 ) {
-           if( (x.c4&0xff)==10 ) printf("\n");else
-          printf(" ");
-        } else
-          printf("%c",(x.c4&0xff));
-        */
        rate=6 + (x.blpos>14*256*1024) + (x.blpos>28*512*1024);
     }
     x.bpos=(x.bpos+1)&7;
@@ -2596,8 +2601,19 @@ void update() {
     if (pr>=848) ++failz;
   
     pr=modelPrediction(x.c0,x.bpos,x.c4);
-    
-    
+   /* if (x.bpos==0) {
+        hConsole = GetStdHandle(STD_OUTPUT_HANDLE); 
+        int color1=fcolors[(fccxt.context&0xff)?FindQy2(fccxt.context>>8):1];
+        SetConsoleTextAttribute(hConsole, color1);
+     
+        if( (x.c4&0xff)<=32 ) {
+           if( (x.c4&0xff)==10 ) printf("\n");else
+          printf(" ");
+        } else
+          printf("%c",(x.c4&0xff));
+        
+    }
+    */
     int pt, pu=(apmA[0].p(pr, x.c0, 3,x.y)+7*pr+4)>>3, pv, pz=failcount+1;
 
     pz+=tri[(fails>>5)&3];
