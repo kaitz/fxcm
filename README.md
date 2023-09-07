@@ -18,6 +18,9 @@ Is a experimental file compressor for text and is based on paq8 model. Intended 
 |fxcm v6|enwik9|WIT,DIC|593869820|125982772|19843| 1829|
 |fxcm v8|enwik8| WIT,DIC|57088865|15725558|1890|1829|
 |fxcm v8|enwik9|WIT,DIC|593869820|125944742|17364 | 1829|
+|fxcm v9| enwik8|- |100000000|16598942|2899|1834|
+|fxcm v9 |enwik9| - | 1000000000|134493830|28183| 1834|
+|fxcm v10|enwik9|WIT,DIC|593869820|125737089|18948| 1834|
 |paq8pxd_v107 -s7|enwik8|DIC-(internal)|100000000|16408142|11189|1460|
 |paq8pxd_v107 -s8|enwik8|DIC-(internal)|100000000|16182108|11473|2264|
 |paq8n -8|enwik8|-|100000000|17916450|5663|1567|
