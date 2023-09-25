@@ -2800,7 +2800,7 @@ int modelPrediction(int c0,int bpos,int c4){
 }
 
 int rate=6;
-void update() {
+void update1() {
     x.c0+=x.c0+x.y;
     if (x.c0>=256) {
         x.c4=(x.c4<<8)+(x.c0&0xff);	
