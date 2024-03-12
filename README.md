@@ -2,6 +2,8 @@
 
 Is a experimental file compressor for text and is based on paq8 model. Intended to replace paq8hp model in cmix-hp (https://github.com/byronknoll/cmix-hp).
 
+Dictionary encode/decode [DIC](https://github.com/kaitz/fxd). Wikipedia transform [WIT](https://github.com/kaitz/wit2).
+
 | |File|Transforms|Size|Compressed|Time sec|Memory MB
 | --- | --- | --- | --- | --- | --- | --- | 
 |fxcm v1|enwik8|-|100000000|16675996|2934|1840|
