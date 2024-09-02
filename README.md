@@ -1,6 +1,6 @@
 # fxcm
 
-Is a experimental file compressor for text and is based on paq8 model. Intended to replace paq8hp model in cmix-hp (https://github.com/byronknoll/cmix-hp).
+Is a experimental file compressor for text and is based on [PAQ](http://www.mattmahoney.net/dc/text.html#1250) architecture. Designed to replace paq8hp model in [cmix-hp](https://github.com/byronknoll/cmix-hp).
 
 Dictionary encode/decode [DIC](https://github.com/kaitz/fxd). Wikipedia transform [WIT](https://github.com/kaitz/wit2).
 
@@ -49,3 +49,5 @@ fxcm v1,3,.. is for enwi8, enwik9 or any wiki dump.
 ​fxcm v2,4,.. is when wiki dump is preprocessed.
 
 Results: https://docs.google.com/document/d/1AGx--3zFy6raMNm5diAxk6GPBUJrxLgaxM9LTsMF1RE/
+
+https://encode.su/threads/4116-fxcm
