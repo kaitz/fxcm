@@ -27,7 +27,7 @@ cmix
 
 */
 
-#define VERSION 22
+#define VERSION 24
 
 #include <stdio.h>
 #include <time.h>
@@ -117,12 +117,13 @@ int stretchc(int p) {
     return di;
 }
 
-inline short stretch(int p) {
+inline short stretch(int p) { 
+assert(p >= 0 && p <= 4095);
     if (p < 0)p=0;
   if (p > 4095)p=4095;
+ 
     return strt[p];
 }
-
 
 template <const int S=256 >
 struct alignas(64) Inputs{
@@ -309,7 +310,8 @@ int wfgets(char *str, int count, FILE  *fp) {
 }
 
 char *s;
-char *dictW[44516];
+char *dictW[44515];
+U8 dictWLen[44515];
 char *dictM[472];
 int codeword2sym[256]; 
 int dict1size=80;
@@ -324,6 +326,7 @@ void loaddict(FILE  *file){
     while ((len=wfgets(s, 8192*8, file)) )  {
         dictW[line_count]=(char *)malloc(len);
         memcpy(dictW[line_count],  s, len);
+        dictWLen[line_count]=U8(len-1);
         //printf("%d,%s\n",len,dictW[line_count]);
         line_count++;
     }
@@ -375,9 +378,10 @@ int lastCW=0;
 void decodeWord(int c){
         int j=decodeCodeWord(c);
         lastCW=j;
-        if (j>=sizeDict) {
+        assert(lastCW>=0 && lastCW<44515);
+        /*if (j>=sizeDict) {
             printf("Bad dictionary 1 codepoint\n");
-        }
+        }*/
         so=&(*dictW[j]);
 
 }
@@ -571,7 +575,6 @@ struct StateMap {
     free(t);
   }
   inline void update() {    
-  //  assert(y==0 || y==1);
     U32 *p=&t[cxt], p0=p[0];
     int pr1=p0>>13;  // count, prediction
     p0+=(x.y<<19)-pr1;
@@ -609,7 +612,6 @@ struct StateMap1 {
     free(t);
   }
   inline void update() {    
-  //  assert(y==0 || y==1);
     U32 *p=&t[cxt], p0=p[0];
     int n=p0&1023, pr1=p0>>12;  // count, prediction
     p0+=(n<limit);
@@ -979,7 +981,6 @@ inline void sets() {
   int i=cn++;
   assert(i>=0 && i<C);
  cxtMask=cxtMask+1; cxtMask=cxtMask*2;
-  
 }
 
 // Predict to mixer m from bit history state s, using sm to map s to
@@ -1194,7 +1195,6 @@ inline void sets() {
   int i=cn++;
   assert(i>=0 && i<C);
  cxtMask=cxtMask+1; cxtMask=cxtMask*2;
-  
 }
 // Predict to mixer m from bit history state s, using sm to map s to
 // a probability.
@@ -1236,7 +1236,7 @@ int __attribute__ ((noinline))  mix() {
         mix4();
     }else{
     if (cp[i]) {
-      assert(cp[i]>=&t[0].bh[0][0] && cp[i]<=&t[tmask].bh[6][6]);
+      assert(cp[i]>=&t[0].bh[0][0] && cp[i]<=&t[tmask].bh[3][6]);
       assert(((long long)(cp[i])&31)>=7);
       *cp[i]=next(*cp[i], x.y);
     }
@@ -1357,14 +1357,15 @@ struct ContextMap2 {
   }
 
 // Construct using m bytes of memory for c contexts(c+7)&-8
-void __attribute__ ((noinline)) Init(U32 m, int c, int s3,const U8 *nn1,int cs4,int k,int u,short *st){
+void __attribute__ ((noinline)) Init(U32 m1, int c, int s3,const U8 *nn1,int cs4,int k,int u,short *st){
     C=c&255;
-    tmask=((m>>6)-1); 
+    int m=m1*2;
+    tmask=((m>>7)-1); 
     cn=0;
     cxtMask=((1<C)-1)*2; // Inital zero contexts
     result=0;
     kep=k;
-    alloc1(t,(m>>6)+64*2,ptr,64);  
+    alloc1(t,(m>>7)+64*2,ptr,128);  
     nn=nn1;        
     int cmul=(c>>8)&255;          // run context mul value
     cms=(c>>16)&255;              // mix prediction mul value
@@ -1435,7 +1436,6 @@ inline void sets() {
   int i=cn++;
   assert(i>=0 && i<C);
  cxtMask=cxtMask+1; cxtMask=cxtMask*2;
-  
 }
 // Predict to mixer m from bit history state s, using sm to map s to
 // a probability.
@@ -1478,7 +1478,7 @@ int __attribute__ ((noinline))  mix() {
     }else{
     if (cp[i]) {
       assert(cp[i]>=&t[0].bh[0][0] && cp[i]<=&t[tmask].bh[14][6]);
-      //assert(((long long)(cp[i])&127)>=31);
+      assert(((long long)(cp[i])&127)>=29);
       *cp[i]=next(*cp[i], x.y);
     }
 
@@ -1571,56 +1571,7 @@ struct  APM {
     }
 };
 
-int pre1[256];
-struct DirectStateMap {
-  StateMap *sm;
-  int *cxt;
-  U32 mask;
-  U8 *CxtState;
-  int index;
-  int count;
-  const U8 *nn;
-    
-  void Init(int m,int c,const U8 *nn1){
-    nn=nn1;
-    mask=(1<<m)-1,index=0,count=c;
-    alloc(cxt,c);
-    alloc(CxtState,(mask+1));
-    alloc(sm,c);
-    for (int i=0; i<count; i++) 
-      sm[i].Init(256,nn1);
-  }
-  void Free(){
-    free(cxt);
-    free(CxtState);
-    for (int i=0; i<count; i++) {
-       sm[i].Free();
-    }
-    free(sm);
-  }
-  U8 next(int state, int y){
-      return nn[state*4+y];
-  }
-  void set(U32 cx,int y) {
-    CxtState[cxt[index]]=next(CxtState[cxt[index]],y);       // update state
-    cxt[index]=(cx)&mask;                                     // get new context
-    sm[index].set(CxtState[cxt[index]]);    // predict from new context
-    x.mxInputs1.add(stretch(sm[index].pr)>>2);
-    x.mxInputs1.add(pre1[CxtState[cxt[index]]]);// sub
-    index++;
-  }
-  void mix() {
-    index=0;
-  }
-};
-void pre2(U8 *nn) {
-    for (int i=0; i<256; i++){
-    
-    U32 n0=nn[i*4+2]*3+1;
-    U32 n1=nn[i*4+3]*3+1;
-    pre1[i]=clp(stretch(((n1<<12) / (n0+n1))))>>2;
-    }
-  }
+
 int buf(int i);
 int bufr(int i);
 int pos;
@@ -2138,6 +2089,7 @@ struct WordsContext {
     vec<U16,64*4> sbytes; // List of bytes surrounded by a current word, max 64*4
     vec<U32,64*4> type;   // List of bytes surrounded by a current word, max 64*4
     vec<U32,64*4> stem;   // List of bytes surrounded by a current word, max 64*4
+    vec<U8,64*4> capital;   // List of bytes surrounded by a current word, max 64*4
     U32 fword,ftype;      // First word of a sentence
     U8 pbyte;             // Current byte before word
     int wordcount,upper;
@@ -2151,23 +2103,25 @@ struct WordsContext {
         vec_reset(&sbytes);
         vec_reset(&type);
         vec_reset(&stem);
+        vec_reset(&capital);
         fword=pbyte=wordcount=upper=ftype=ref=0;
     }
     void Set(U8 b,int a=0){
         pbyte=b;upper=a;
     }
-    void  __attribute__ ((noinline)) Update(U32 w,U8 b, U32 t,U32 s,bool r=false) {
+    void  __attribute__ ((noinline)) Update(U32 w,U8 b, U32 t,U32 s) {
         if (fword==0) fword=w;
         vec_push(&sbytes,U16(pbyte*256+b));  // Surrounding bytes
         vec_push(&type,t);
         vec_push(&stem,s);
+        vec_push(&capital,U8(upper));
         pbyte=0;wordcount++;
         if (ftype==0 && t) ftype=t;
     }
     void  __attribute__ ((noinline)) Remove(){
         const int num=vec_size(&stem);
         if (num) {
-            vec_pop(&sbytes),vec_pop(&type),vec_pop(&stem),wordcount--;
+            vec_pop(&sbytes),vec_pop(&type),vec_pop(&stem),vec_pop(&capital),wordcount--;
         }
     }
     U32  __attribute__ ((noinline)) Word(int i=1){
@@ -2183,6 +2137,11 @@ struct WordsContext {
     U32  __attribute__ ((noinline)) Type(int i=1){
         const int num=vec_size(&type);
         if (num>=i) return vec_at(&type,num-(i));
+        else return 0;
+    }
+    U8  __attribute__ ((noinline)) Capital(int i=1){
+        const int num=vec_size(&capital);
+        if (num>=i) return vec_at(&capital,num-(i));
         else return 0;
     }
     // Return last word matching type, ... If not found return 0
@@ -2275,8 +2234,8 @@ class Word {
 public:
   U8 Letters[MAX_WORD_SIZE];
   U8 Start, End;
-  U32 Hash, Type;
-  Word(): Start(0), End(0), Hash(0), Type(0){
+  U32 Hash, Type, Suffix, Preffix;
+  Word(): Start(0), End(0), Hash(0), Type(0), Suffix(0), Preffix(0) {
     memset(&Letters[0], 0, sizeof(U8)*MAX_WORD_SIZE);
   }
   bool operator==(const char *s) const{
@@ -2348,35 +2307,51 @@ enum EngWordTypeFlags {
   Noun                   = (1<<1),
   Adjective              = (1<<2),
   Plural                 = (1<<3),
-  Negation               = (1<<4),
   PastTense              = (1<<5)|Verb,
-  PresentParticiple      = (1<<6)|Verb,
-  AdjectiveSuperlative   = (1<<7)|Adjective,
-  AdjectiveWithout       = (1<<8)|Adjective,
-  AdjectiveFull          = (1<<9)|Adjective,
-  AdverbOfManner         = (1<<10),
-  SuffixNESS             = (1<<11),
-  SuffixITY              = (1<<12)|Noun,
-  SuffixCapable          = (1<<13),
-  SuffixNCE              = (1<<14),
-  SuffixNT               = (1<<15),
-  SuffixION              = (1<<16),
-  SuffixAL               = (1<<17)|Adjective,
-  SuffixIC               = (1<<18)|Adjective,
-  SuffixIVE              = (1<<19),
-  SuffixOUS              = (1<<20)|Adjective,
-  PrefixOver             = (1<<21),
-  PrefixUnder            = (1<<22),
-  Male                   = (1<<23),
-  Female                 = (1<<24),
-  Article                = (1<<25),
-  Conjunction            = (1<<26),
-  Adposition             = (1<<27),
-  Number                 = (1<<28), // not used
-  Preposition            = (1<<29), // not used
-  ConjunctiveAdverb      = (1<<30)
+  PresentParticiple      = (1<<4)|Verb,
+  AdjectiveSuperlative   = (1<<5)|Adjective,
+  AdjectiveWithout       = (1<<6)|Adjective,
+  AdjectiveFull          = (1<<7)|Adjective,
+  AdverbOfManner         = (1<<8),
+  Suffix                 = (1<<9),
+  Prefix                 = (1<<10),
+  Male                   = (1<<11),
+  Female                 = (1<<13),
+  Article                = (1<<14),
+  Conjunction            = (1<<15),
+  Adposition             = (1<<16),
+  Number                 = (1<<17), // not used
+  Preposition            = (1<<18), // not used
+  ConjunctiveAdverb      = (1<<19)
+};
+enum EngWordTypeFlagsNegation {
+  Negation               = (1<<0),
+  PrefixIrr              = (1<<1)|Negation,
+  PrefixOver             = (1<<2),
+  PrefixUnder            = (1<<3),
+  PrefixUnn              = (1<<4)|Negation,
+  PrefixNon              = (1<<5)|Negation,
+  PrefixAnti             = (1<<6)|Negation,
+  PrefixDis              = (1<<7)|Negation
 };
 
+enum EngWordTypeFlagsSuffix {
+  SuffixNESS             = (1<<0),
+  SuffixITY              = (1<<1)|Noun,
+  SuffixCapable          = (1<<2),
+  SuffixNCE              = (1<<3),
+  SuffixNT               = (1<<4),
+  SuffixION              = (1<<5),
+  SuffixAL               = (1<<6)|Adjective,
+  SuffixIC               = (1<<7)|Adjective,
+  SuffixIVE              = (1<<8),
+  SuffixOUS              = (1<<9)|Adjective,
+};
+ 
+//https://www.eecis.udel.edu/~vijay/cis889/ie/pos-set.pdf
+//https://aclanthology.org/J95-4004.pdf
+//https://web.archive.org/web/20080719135212/http://www.comp.leeds.ac.uk/amalgam/tagsets/upenn.html
+//https://web.archive.org/web/20080609083206/http://www.cis.upenn.edu/~treebank/home.html
 #define NUM_VOWELS 6
 const char Vowels[NUM_VOWELS]={'a','e','i','o','u','y'};
 #define NUM_DOUBLES 9
@@ -2384,9 +2359,11 @@ const char Doubles[NUM_DOUBLES]={'b','d','f','g','m','n','p','r','t'};
 #define NUM_LI_ENDINGS 10
 const char LiEndings[NUM_LI_ENDINGS]={'c','d','e','g','h','k','m','n','r','t'};
 #define NUM_NON_SHORT_CONSONANTS 3
-const char NonShortConsonants[NUM_NON_SHORT_CONSONANTS]={'w','x','Y'};
-#define NUM_NUM 20
-const char *Numbers[NUM_NUM]={"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety","hundred","thousand"};
+const char NonShortConsonants[NUM_NON_SHORT_CONSONANTS]={'w','x','Y'}; 
+#define NUM_VERB 23
+const char *VerbWords1[NUM_VERB]={"has","had","have","was","were","may","might","must","shall","should","can","could","will","would","is","am","are","be","being","been","do","does","did"};
+#define NUM_NUM 21
+const char *Numbers[NUM_NUM]={"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety","hundred","thousand","million"};
 #define  NUM_CONJ_WORDS  25
 const char *ConjWords[NUM_CONJ_WORDS]={"for","and","nor","but","or","yet","so","than","as","that","if","when","because","while",
 "where","after","though","whether","before","although","like","once","unless","now","except"};
@@ -2437,21 +2414,21 @@ const char *(SuffixesStep2[NUM_SUFFIXES_STEP2])[2]={
  
 };
 const U32 TypesStep2[NUM_SUFFIXES_STEP2]={
-  SuffixION,
-  SuffixION|SuffixAL,
-  SuffixNESS,
-  SuffixNESS,
-  SuffixNESS,
-  SuffixION|SuffixAL,
+  Suffix,//SuffixION,
+  Suffix|Adjective,//SuffixION|SuffixAL,
+  Suffix,//SuffixNESS,
+  Suffix,//SuffixNESS,
+  Suffix,//SuffixNESS,
+  Suffix|Adjective,//SuffixION|SuffixAL,
   AdverbOfManner,
-  AdverbOfManner|SuffixITY,
+  AdverbOfManner|Noun|Suffix,//AdverbOfManner|SuffixITY,
   AdverbOfManner,
-  SuffixION,
+  Suffix,//SuffixION,
   0,
-  SuffixITY,
+  Noun|Suffix,//SuffixITY,
   AdverbOfManner,
   AdverbOfManner,
-  SuffixITY,
+  Noun|Suffix,//SuffixITY,
   0,
   0,
   AdverbOfManner,
@@ -2459,6 +2436,31 @@ const U32 TypesStep2[NUM_SUFFIXES_STEP2]={
   0,
   AdverbOfManner,
   AdverbOfManner
+};
+
+const U32 TypesStep2Suffix[NUM_SUFFIXES_STEP2]={
+  SuffixION,
+  SuffixION|SuffixAL,
+  SuffixNESS,
+  SuffixNESS,
+  SuffixNESS,
+  SuffixION|SuffixAL,
+  0,//AdverbOfManner,
+  SuffixITY,//AdverbOfManner|SuffixITY,
+  0,//AdverbOfManner,
+  SuffixION,
+  0,
+  SuffixITY,
+  0,//AdverbOfManner,
+  0,//AdverbOfManner,
+  SuffixITY,
+  0,
+  0,
+  0,//AdverbOfManner,
+  0,
+  0,
+  0,//AdverbOfManner,
+  0,//AdverbOfManner
 };
 #define NUM_SUFFIXES_STEP3 8
 const char *(SuffixesStep3[NUM_SUFFIXES_STEP3])[2]={
@@ -2472,10 +2474,53 @@ const char *(SuffixesStep3[NUM_SUFFIXES_STEP3])[2]={
   {"ness", ""},
   
 };
-const U32 TypesStep3[NUM_SUFFIXES_STEP3]={SuffixION|SuffixAL,SuffixION|SuffixAL,0,0,SuffixITY,SuffixAL,AdjectiveFull,SuffixNESS};
+const U32 TypesStep3[NUM_SUFFIXES_STEP3]={
+Suffix|Adjective,//SuffixION|SuffixAL,
+Suffix|Adjective,//SuffixION|SuffixAL,
+0,
+0,
+Noun|Suffix,//SuffixITY,
+Suffix|Adjective,//SuffixAL,
+AdjectiveFull,
+Suffix//SuffixNESS
+};
+
+const U32 TypesStep3Suffix[NUM_SUFFIXES_STEP3]={
+SuffixION|SuffixAL,
+SuffixION|SuffixAL,
+0,
+0,
+SuffixITY,
+SuffixAL,
+0,
+SuffixNESS
+};
 #define NUM_SUFFIXES_STEP4 20
 const char *SuffixesStep4[NUM_SUFFIXES_STEP4]={"al","ance","ence","er","ic","able","ible","ant","ement","ment","ent","ou","ism","ate","iti","ous","ive","ize","sion","tion"};
 const U32 TypesStep4[NUM_SUFFIXES_STEP4]={
+  Suffix|Adjective,//SuffixAL,
+  Suffix,//SuffixNCE,
+  Suffix,//SuffixNCE,
+  0,
+  Suffix|Adjective,//SuffixIC,
+  Suffix,//SuffixCapable,
+  Suffix,//SuffixCapable,
+  Suffix,//SuffixNT,
+  0,
+  0,
+  Suffix,//SuffixNT,
+  0,
+  0,
+  0,
+  Suffix|Noun,//SuffixITY,
+  Suffix|Adjective,//SuffixOUS,
+  Suffix,//SuffixIVE,
+  0,
+  Suffix,//SuffixION,
+  Suffix,//SuffixION
+};
+
+const U32 TypesStep4Suffix[NUM_SUFFIXES_STEP4]={
   SuffixAL,
   SuffixNCE,
   SuffixNCE,
@@ -2651,19 +2696,19 @@ private:
   }
   bool ProcessPrefixes(Word *W){
     if ((*W).StartsWith("irr") && (*W).Length()>5 && ((*W)[3]=='a' || (*W)[3]=='e'))
-      (*W).Start+=2, (*W).Type|=Negation;
+      (*W).Start+=2, (*W).Type|=Prefix, (*W).Preffix|=PrefixIrr;
     else if ((*W).StartsWith("over") && (*W).Length()>5)
-      (*W).Start+=4, (*W).Type|=PrefixOver;
+      (*W).Start+=4, (*W).Type|=Prefix, (*W).Preffix|=PrefixOver;
     else if ((*W).StartsWith("under") && (*W).Length()>6)
-      (*W).Start+=5, (*W).Type|=PrefixUnder;
+      (*W).Start+=5, (*W).Type|=Prefix, (*W).Preffix|=PrefixUnder;
     else if ((*W).StartsWith("unn") && (*W).Length()>5)
-      (*W).Start+=2, (*W).Type|=Negation;
+      (*W).Start+=2, (*W).Type|=Prefix, (*W).Preffix|=PrefixUnn;
     else if ((*W).StartsWith("non") && (*W).Length()>(U32)(5+((*W)[3]=='-')))
-      (*W).Start+=2+((*W)[3]=='-'), (*W).Type|=Negation;
+      (*W).Start+=2+((*W)[3]=='-'), (*W).Type|=Prefix, (*W).Preffix|=PrefixNon;
     else if ((*W).StartsWith("anti") && (*W).Length()>6&& ((*W)[4]=='-'))
-      (*W).Start+=4+((*W)[4]=='-'), (*W).Type|=Negation;
+      (*W).Start+=4+((*W)[4]=='-'), (*W).Type|=Prefix, (*W).Preffix|=PrefixAnti;
     else if ((*W).StartsWith("dis") && (*W).Length()>5 && ((*W)[3]=='-'))
-      (*W).Start+=2+((*W)[3]=='-'), (*W).Type|=Negation;
+      (*W).Start+=2+((*W)[3]=='-'), (*W).Type|=Prefix, (*W).Preffix|=PrefixDis;
     else
       return false;
     return true;
@@ -2782,7 +2827,7 @@ private:
         }
         default: (*W).End-=3;
       }
-      (*W).Type|=Negation;
+      (*W).Type|=Prefix, (*W).Preffix|=Negation;// suffix as preffix
       return true;
     }
     if ((*W).EndsWith("hood") && (*W).Length()>7){
@@ -2912,7 +2957,7 @@ private:
     return false;
   }
   bool Step1c(Word *W){
-    if ((*W).Length()>2 && ((*W)(0))=='y' && IsConsonant((*W)(1))){
+    if ((*W).Length()>2 && /*tolower*/((*W)(0))=='y' && IsConsonant((*W)(1))){
       (*W).Letters[(*W).End]='i';
       return true;
     }
@@ -2922,7 +2967,7 @@ private:
     for (int i=0;i<NUM_SUFFIXES_STEP2;i++){
       if ((*W).EndsWith(SuffixesStep2[i][0]) && SuffixInRn(W, R1, SuffixesStep2[i][0])){
         (*W).ChangeSuffix(SuffixesStep2[i][0], SuffixesStep2[i][1]);
-        (*W).Type|=TypesStep2[i];
+        (*W).Type|=TypesStep2[i],(*W).Suffix|=TypesStep2Suffix[i];
         return true;
       }
     }
@@ -2981,14 +3026,14 @@ private:
     for (int i=0;i<NUM_SUFFIXES_STEP3;i++){
       if ((*W).EndsWith(SuffixesStep3[i][0]) && SuffixInRn(W, R1, SuffixesStep3[i][0])){
         (*W).ChangeSuffix(SuffixesStep3[i][0], SuffixesStep3[i][1]);
-        (*W).Type|=TypesStep3[i];
+        (*W).Type|=TypesStep3[i],(*W).Suffix|=TypesStep3Suffix[i];
         res=true;
         break;
       }
     }
     if ((*W).EndsWith("ative") && SuffixInRn(W, R2, "ative")){
       (*W).End-=5;
-      (*W).Type|=SuffixIVE;
+      (*W).Type|=Suffix,(*W).Suffix|=SuffixIVE;
       return true;
     }
     if ((*W).Length()>5 && (*W).EndsWith("less")){
@@ -3004,7 +3049,7 @@ private:
       if ((*W).EndsWith(SuffixesStep4[i]) && SuffixInRn(W, R2, SuffixesStep4[i])){
         (*W).End-=strlen(SuffixesStep4[i])-(i>17);
         if (i!=10 || (*W)(0)!='m')
-          (*W).Type|=TypesStep4[i];
+          (*W).Type|=TypesStep4[i],(*W).Suffix|=TypesStep4Suffix[i];
         if (i==0 && (*W).EndsWith("nti")){
           (*W).End--;
           res=true;
@@ -3035,6 +3080,10 @@ private:
   }
 public:
   bool Stem(Word *W){
+    /*if ((*W).Length()<2){
+      Hash(W);
+      return false;
+    }*/
     bool res = TrimStartingApostrophe(W);
     if (ProcessPrefixes(W)) res = true;
     if (ProcessSuperlatives(W)) res = true;
@@ -3087,6 +3136,10 @@ public:
         res = true, (*W).Type|=Adposition;
       else if (W->MatchesAny(ConAdVerPrepWords, NUM_CAVER_WORDS))
         res = true, (*W).Type|=ConjunctiveAdverb;
+      else if ((x.blpos<451531986) && W->MatchesAny(VerbWords1, NUM_VERB)) //77,06% disable 
+        res = true, (*W).Type|=Verb;
+      else if (W->MatchesAny(Numbers, NUM_NUM))
+        res = true, (*W).Type|=Number;
     }
     Hash(W);
     return res;
@@ -3144,7 +3197,6 @@ Word StemWords[4];
 Word *cWord, *pWord;
 EnglishStemmer StemmerEN;
 int StemIndex=0;
- 
 bool isMath=false;
 int isParagraph;
 
@@ -3188,8 +3240,6 @@ WordsContext worcxt1;
 WordsContext worcxt2;
 BracketContext<U16> htcxt;
 
-DirectStateMap dcsm;
-DirectStateMap dcsm1;
 SparseMatchModel smatch;
 
 void PredictorInit() { 
@@ -3208,10 +3258,6 @@ void PredictorInit() {
     scmA[5].Init(8); 
     scmA[6].Init(7); 
 
-    const int dccount=5;
-    dcsm.Init(27,dccount, &STA7[0][0]);
-    dcsm1.Init(24,2, &STA7[0][0]);
-  
     // Mixers      size,  shift, err, errmul 
     mxA[0].Init(    2048, 237,  8, 69); // general
     mxA[1].Init(   6*256, 204,  8, 19); // ...
@@ -3225,7 +3271,7 @@ void PredictorInit() {
     mxA[9].Init( 0x20000,  55,  1, 24);
     mxA[10].Init(8*7*2*2,   6,  0,  4); // final mixer
     mxA[11].Init(      1,   6,  0,  4); // helper for final
-    mxA[12].Init(      1,  17, 55, 24); // adjustdment
+    mxA[12].Init(      1,  17, 55, 24); // adjustdment, bad for cmix
     
     apmA0.Init();
     apmA1.Init();
@@ -3235,19 +3281,17 @@ void PredictorInit() {
     apmA5.Init();
     rcmA[0].Init(1*4096*4096,6);
 
-    //x.mxInputs1.ncount=(539+16)&-16;//444
-    int lp=(539+16+6*4)&-16;
+    int lp=(539+16+6*4-14)&-16;
     x.mxInputs2.ncount=(8+2+15)&-16;
     x.mxInputs3.ncount=(85+16)&-16;
     
     // Provide inputs array info to mixers
     for (int i=0;i<10;i++)
-         mxA[i].setTxWx(lp/*x.mxInputs1.ncount*/,&x.mxInputs1.n[0]);
+         mxA[i].setTxWx(lp,&x.mxInputs1.n[0]);
     // Final mixer
     mxA[10].setTxWx(x.mxInputs2.ncount,&x.mxInputs2.n[0]);
     mxA[11].setTxWx(x.mxInputs2.ncount,&x.mxInputs2.n[0]);
     mxA[12].setTxWx(x.mxInputs3.ncount,&x.mxInputs3.n[0]);
-    //x.mxInputs3.ncount=0;
      
     cmC2[0].Init(8*4096*4096,3|(c_r[0]<<8)|(c_s[0]<<16),c_s3[0],&STA6[0][0],c_s4[0],0xf0,1,&st2_p1[0]);
     cmC2[1].Init(16*4096*4096,1|(c_r[1]<<8)|(c_s[1]<<16),c_s3[1],&STA6[0][0],c_s4[1],0xf0,1,&st2_p1[0]);
@@ -3314,10 +3358,8 @@ void PredictorFree(){
     for (int i=0;i<6;i++) cmC[i].Free();
     for (int i=0;i<8;i++) cmC1[i].Free();
     for (int i=0;i<18;i++) cmC2[i].Free();
-    for (int i=0;i<44516;i++) free(dictW[i]);
+    for (int i=0;i<44515;i++) free(dictW[i]);
     rcmA[0].Free();
-    dcsm.Free();
-    dcsm1.Free();
 }
   
 int buf(int i){
@@ -3621,10 +3663,9 @@ int buffer1(int i){
     return cwbuf[(cwpos-i)&CBMASK];
 }
 
-U32 wType=0;
 U32 sVerb=0;
 
-bool lastArt=false,lastThe=false;
+bool lastArt=false;
 // Return value based on a word type. Must fit in 4 bits
 int getWT(U32 t){
     if      (t& Verb) return 1;
@@ -3636,19 +3677,14 @@ int getWT(U32 t){
     else if (t& Conjunction) return 7;
     else if (t& Adposition) return 8;
     else if (t& ConjunctiveAdverb) return 9;
-
     else if (t& AdverbOfManner) return 11;
-    else if (t& SuffixNESS) return 12;
-    else if (t& SuffixNCE) return 12;
-    else if (t& SuffixNT) return 12;
-    else if (t& SuffixION) return 12;
-    else if (t& SuffixIVE) return 12;
-    else if (t& PrefixOver) return 13;
-    else if (t& PrefixUnder) return 13;
+    else if (t& Suffix) return 12;
+    else if (t& Prefix) return 13;
     else if (t& Plural) return 10;
     else if (t) return 14;
     else return 15;
 }
+
 // Update string and stemm when string ends
 void setbufstem(char c){
     // Allow:
@@ -3669,25 +3705,27 @@ void setbufstem(char c){
         pWord=cWord;
         cWord=&StemWords[StemIndex];
         memset(cWord, 0, sizeof(Word));
-        // This is semi ok, remove me if possible
-        wType=wType<<6;
-        if ((*pWord).Type& Verb) wType=wType|1,sVerb=(*pWord).Hash;
-        if ((*pWord).Type& Adjective)  wType=wType|4;
-        if ((*pWord).Type& Plural)  wType=wType|8;
-        if ((*pWord).Type& Negation)  wType=wType|16;
-        if ((*pWord).Type& PastTense)  wType=wType|32;
+
+        if ((*pWord).Type& Verb) sVerb=(*pWord).Hash;
 
         // This is not correct way. We assume that all words that have word 'the' before are nouns. This is not true.
         if (lastArt){
             (*pWord).Type|=Noun;
         }
         if ( ((*pWord).Type==Article&&  buffer1(5)==SPACE&&  buffer1(4)=='t' &&  buffer1(3)=='h'&&buffer1(2)=='e')){
-            lastArt=lastThe=true;
+            lastArt=true;
         }else  
             lastArt=false;
-           
+
         U32 whash=(isMath?word0:(*pWord).Hash);
         lastWT=lastWT*16+getWT((*pWord).Type);
+        if ((*pWord).Type==Number && worcxt.Type(1)==Number){
+            U16 sb=worcxt.sBytes(1);
+            whash=whash+worcxt.Word(1);
+            worcxt.Remove();
+            worcxt.Set(sb>>8);
+        
+        }
         // Sentence, all words.
         worcxt.Update(word0,c1,(*pWord).Type,whash);
         // Paragraph, most words, exclude Conjunction etc.
@@ -3713,23 +3751,33 @@ void procWord(){
     if (dcwl>0 ){
         if (dcwl==2)dcw=(dcw/256)+(dcw&255)*256;
         if (dcwl==3)dcw=((dcw/256)/256)+(dcw&0xff00)+(dcw&255)*256*256;
-        if (dcwl>3 ) printf("ERROR");
+        //if (dcwl>3 ) printf("ERROR");
         decodeWord(dcw);
         dcw=dcwl=0;
-        int l = strlen(so);
-        for (int i = 0; i < l; i++) {
+        for (int i = 0; i < dictWLen[lastCW]; i++) {
             char ch = so[i];
             setbuf(ch); 
         }
     }
 }
 
+bool skipM1=false;
+//U32 skipc=0;
 // Main context parsing and prediction
 int modelPrediction(int c0,int bpos,int c4){
     int i,c;
     U32 h,j;
     
     if (bpos== 0){
+        // Skip mode based on a match lenght
+        skipM1=isMatch>61;
+        if (colcxt.isTemp || colcxt.nlChar==WIKITABLE) skipM1=isMatch>15;
+        if (colcxt.lastfc()==SQUAREOPEN || worcxt.wordcount>1) skipM1=isMatch>15;
+        if (colcxt.lastfc()=='*' ||colcxt.lastfc()=='#') skipM1=isMatch>15;
+        if (colcxt.lastfc()==EQUALS) skipM1=isMatch>5;
+        if (qocxt.context==APOSTROPHE) skipM1=isMatch>5;
+        if (isParagraph && worcxt.wordcount>3) skipM1=isMatch>13;
+        //if (skipT) skipc++; //14 of 85 cm skipped
         c3=c2;
         c2=c1;
         c1=c4&0xff;
@@ -3787,7 +3835,7 @@ int modelPrediction(int c0,int bpos,int c4){
         for (i=13; i>0; --i)
             t[i]=t[i-1]*primes[i]+c1+i*256;
         // Skip when line starts with spaces and it is space char
-        if (fc==SPACE && c1==SPACE){
+        if ((fc==SPACE && c1==SPACE) || (skipM1)){
             cmC2[0].sets(); cmC2[0].sets(); cmC2[0].sets(); 
         } else {
             for (i=3; i<6; ++i)
@@ -3802,7 +3850,7 @@ int modelPrediction(int c0,int bpos,int c4){
         numbers=numbers<<1;
         j=c1;
         if (((j-'a') <= ('z'-'a')) || (c1>127 && c2!=ESCAPE)) {
-            if (word0==0){
+            if (word0==0 ){
                 if (isMath && c2=='/' && c3==LESSTHAN) isMath=false;
                 U8 reChar=c2;
                 // Skip first upper or upper word flag
@@ -3840,12 +3888,14 @@ int modelPrediction(int c0,int bpos,int c4){
                     else if (dcwl==3)dcw2=((dcw/256)/256)+(dcw&0xff00)+(dcw&255)*256*256;
                     int i=decodeCodeWord(dcw2);
                     if (i>0) deccode=i; // Change only when found
+                    assert(deccode>=0 && deccode<0x20000);
                 }
             } else if (dcw) {
                 // Codeword ended so decode it and put to the decoded text buffer
                 procWord();
                 // Set mixer(8) to last decoded dictionary index (befere main text ends)
                 if (x.blpos<448131719)  deccode=lastCW;
+                assert(deccode>=0 && deccode<0x20000);
             }
             // Set char to decoded text buffer
             if (c1==10 || c1==9 ||(c1>31 && c1<128)) {
@@ -3857,9 +3907,11 @@ int modelPrediction(int c0,int bpos,int c4){
                 procWord();
                 // Set mixer(8) to last decoded dictionary index (befere main text ends)
                 if (x.blpos<448131719) deccode=lastCW;
+                assert(deccode>=0 && deccode<0x20000);
             }else {
                 // Set mixer(8) to non-codeword flag (bit 16) and last 8 bit2words
                 deccode=0x10000+(stream2b&0xffff);
+                assert(deccode>=0 && deccode<0x20000);
             }
             // Set char to decoded text buffer
             if (c1==10 || c1==9 ||(c1>31 && c1<128)) {
@@ -3891,21 +3943,21 @@ int modelPrediction(int c0,int bpos,int c4){
               ) qocxt.Update(qocxt.cxt); 
             // Reset only when not '[word word ...'
             if (word00   &&!(fccxt.cxt==SQUAREOPEN) )word00=0;
-            //else if (word00) printf("%c",fccxt.cxt);
+            // Update word context
             if (word0){
                 // Skip some word tpyes in main word order
                 if (((*pWord).Type&(ConjunctiveAdverb+Conjunction))==0 ){
-                word3=word2*47;
-                word2=word1*53;
-                word1=word0*83;
-               }
-
-                // Update word context
-                
+                    word3=word2*47;
+                    word2=word1*53;
+                    word1=word0*83;
+                }
+                if (worcxt.Type(1)==Number){
+                    stream3bR=(stream3bR<<7)+1;
+                    stream3b=(stream3b<<7)+1;
+                }
                 if(firstWord==0 && fccxt.cxt!=SQUAREOPEN) {
                     firstWord=word0;
                 }
-                // https://osuokc.edu/sites/default/files/documents/ssoc/run%20ons%20and%20comma%20splices.pdf
                 // Separate at Conjunction(ok), Article(good)
                 if (worcxt.Type()&(Conjunction) ){
                     stream3bR=stream3bR<<7;
@@ -3919,7 +3971,7 @@ int modelPrediction(int c0,int bpos,int c4){
                 }
              
                 // Add ok, PP problematic
-                if (worcxt.Type()&(Adposition)|| isParagraph && (worcxt.Type()&(PresentParticiple))){
+                if (worcxt.Type()&(Adposition)|| (isParagraph && (worcxt.Type()&(PresentParticiple))) ){
                     stream2bR=(stream2bR<<2)+(stream2bR&3);
                     stream2b=(stream2b<<2)+(stream2b&3);
                 }
@@ -3930,19 +3982,18 @@ int modelPrediction(int c0,int bpos,int c4){
                     }
                 }
 
-               if ((worcxt.Type()&(Noun) )&& worcxt.Type(2)&(Article)){
+                if ((worcxt.Type()&(Noun) )&& worcxt.Type(2)&(Article)){
                     stream3bR=(stream3bR<<6)+1;
                     stream3b=(stream3b<<6)+1;
-
-                     U16 sb=worcxt.sBytes(1);
-                U32 w=worcxt.Word(1);
-                U32 t=worcxt.Type(1);
-                worcxt.Remove();
-                worcxt.Remove();
-                worcxt.Set(sb>>8);
-                worcxt.Update(w,c1,t,w);
+                    U16 sb=worcxt.sBytes(1);
+                    U32 w=worcxt.Word(1);
+                    U32 t=worcxt.Type(1);
+                    U8 ca=worcxt.Capital(1);
+                    worcxt.Remove();
+                    worcxt.Remove();
+                    worcxt.Set(sb>>8,ca);
+                    worcxt.Update(w,c1,t,w);
                 }
-                lastThe=false;
 
                 // Reset all bit stream mask after a word
                 stream3bRMask2=stream3bRMask1;
@@ -3950,12 +4001,12 @@ int modelPrediction(int c0,int bpos,int c4){
                 stream3bMask=stream2bMask=stream3bRMask1=0;
             }else if (c1==VERTICALBAR && colcxt.isTemp){ 
                 // In template mode set last word end char to VERTICALBAR
-                // 
                 U16 sb=worcxt.sBytes(1);
                 U32 w=worcxt.Word(1);
                 U32 t=worcxt.Type(1);
+                U8 ca=worcxt.Capital(1);
                 worcxt.Remove();
-                worcxt.Set(sb>>8);
+                worcxt.Set(sb>>8,ca);
                 worcxt.Update(w,c1,t,w);
             }
             if (buffer1(6)==charSwap(LESSTHAN) && buffer1(5)== 't'&& isText==false && c1==SPACE  &&strcmp(so, "text")==0) isText=true,so=&sonull;
@@ -3986,6 +4037,7 @@ int modelPrediction(int c0,int bpos,int c4){
                 spaces++;
             }
             else if (c1==LF) {
+                
                 fc=isParagraph=firstWord=lastWT=0;
                 nl1=nl;
                 nl=pos-1;
@@ -4013,7 +4065,7 @@ int modelPrediction(int c0,int bpos,int c4){
                     // Skip sentence reset if fallowing is true
                     if (!(fccxt.cxt==SQUAREOPEN  ||  fccxt.cxt=='(' ||colcxt.nlChar==WIKITABLE  || colcxt.lastfc()=='*' )) worcxt.Reset();
                     senword=0; // Age words(stream) and reset word context
-            }
+                }
                 if ( c1==')'  )senword=0;
             }
             else if (c1==',') {
@@ -4196,7 +4248,7 @@ int modelPrediction(int c0,int bpos,int c4){
         // We have bold/italic first char/words. When words surrounded by ' end there is problably rest of paraghraph.
         // Reset first char context and set new first char as paragraph start and continue.
         // exeption: ignore in list
-        if ((colcxt.lastfc(0)==APOSTROPHE||  fc==APOSTROPHE &&colcxt.lastfc(0)!='*' ) && (c1==SPACE)) {
+        if ((colcxt.lastfc(0)==APOSTROPHE||  (fc==APOSTROPHE &&(colcxt.lastfc(0)!='*')) ) && (c1==SPACE)) {
             if(c2==APOSTROPHE || c3==APOSTROPHE ){
                 fc=FIRSTUPPER;
                 isParagraph=1;            // Paragraph
@@ -4280,9 +4332,9 @@ int modelPrediction(int c0,int bpos,int c4){
         if (c1==ESCAPE||col<2 ||utf8left ||fc==SPACE) {
             cmC2[5].sets(); 
         } else {
-            cmC2[5].set(h+ word2*71);
+             if ( isMatch>61) cmC2[5].sets(); else  cmC2[5].set(h+ word2*71);
         }
-       if (fc==SPACE ||brcxt.cxt==LESSTHAN ) {
+       if (fc==SPACE ||brcxt.cxt==LESSTHAN) {
                cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); 
                cmC1[8].sets();  cmC1[8].sets();
         } else {
@@ -4300,27 +4352,37 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC1[8].set(h+word1);
        cmC1[8].set(worcxt1.Word(1)*53+worcxt1.Word(2)*11+h); 
         }
-
-        cmC1[6].set(h+(worcxt.Type(1)&0xffff)+worcxt1.Word(1)); 
+        // current word and word(1) type upto preffix(not included), paragraph word(1) 
+        cmC1[6].set(h+(worcxt.Type(1)&(0x1FF))+worcxt1.Word(1)); 
         
-        cmC2[6].set(((stream2b&15)<<16)+(t[2]&0xffff));  // o2
+        if ( isMatch>61) cmC2[6].sets(); else  cmC2[6].set(((stream2b&15)<<16)+(t[2]&0xffff));  // o2
 
         if (c1==ESCAPE || utf8left || fccontext==CURLYOPENING) 
             cmC2[7].set(0);
         else 
             cmC2[7].set(indirectBrByte);
+        if (skipM1) {
+            cmC2[8].sets();
+            cmC2[8].sets();
+            cmC2[8].sets();
+        }else{
+        
         cmC2[8].set( ((indirectBrByte>>0)&0x7ff)*32 + ((stream4b & 0xfff0) << 16)+BrFcIdx);
         cmC2[8].set((stream3bR&0x3fffffff)*4+(stream2b&3));
         cmC2[8].set((fccontext*4) + ((stream3bR & 0x3ffff) << 9 )+BrFcIdx);
-
+      }
         if (fccontext==HTLINK) 
             cmC2[8].sets();
         else
             cmC2[8].set((c4 & 0xffffff) + ((stream2b << 18) & 0xff000000));
-
+        if (skipM1) {
+            cmC1[0].sets();
+            cmC1[0].sets();
+            
+        }else{
         cmC1[0].set(colcxt.lastfc(0) | (fccontext<< 15) | ((stream3b & 63) << 7)|(brcontext << 24) );
         cmC1[0].set((colcxt.lastfc(0) | ((c4 & 0xffffff) << 8)));
-
+         }
         cmC1[1].set( (stream2b & 3) +word00*11);
         cmC1[1].set(c4 & 0xffff);
         cmC1[1].set(((fc << 11) | c1)+((stream2b & 3)<< 18));
@@ -4343,7 +4405,7 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC1[4].set(c1+word0+number0*191 );//00
         cmC1[4].set(((c4 & 0xffff) << 16) | (fccontext  << 8) |fc);
         cmC1[4].set(((stream3bR & 0xfff)<< 8)+((stream2b & 0xfc)));
-        if (c1==ESCAPE) {
+        if (c1==ESCAPE  ) {
             cmC[0].sets();cmC[0].sets();cmC[0].sets();
             cmC[0].sets();cmC[0].sets();cmC[0].sets();
         } else {
@@ -4361,9 +4423,11 @@ int modelPrediction(int c0,int bpos,int c4){
             }
             if (colcxt.lastfc()=='*') {
                 // List
-                cmC[0].set(word0+( ( fccontext) << 8)  | ((BrFcIdx ) << 16));// or not add
+                cmC[0].set((word0+( ( fccontext) << 8))  | ((BrFcIdx ) << 16));// or not add
                 cmC[0].set(c1);
                 cmC[0].set(word0);//00
+            /*} else if (fc==SPACE){
+                cmC[0].sets();cmC[0].sets();cmC[0].sets();*/
             } else {
                 // Table
                 cmC[0].set(wrt_2b[bufr(colcxt.abovecellpos)]|( ( fccontext) << 8)  | ((BrFcIdx ) << 16));
@@ -4371,11 +4435,13 @@ int modelPrediction(int c0,int bpos,int c4){
                 cmC[0].set( word0+wrt_2b[bufr(colcxt.abovecellpos)] );
             }
         }
-
-        cmC[1].set((stream3b & 0x7fff)*word0+BrFcIdx );
-        cmC[1].set((x4 & 0xff0000ff) | ((stream3b & 0xe07) << 8));
-        cmC[1].set((indirectBrByte& 0xffff) | ((stream3b & 0x38) << 16));
-
+        if (fc==SPACE|| (skipM1)) {
+            cmC[1].sets();cmC[1].sets();cmC[1].sets();
+        } else {
+            cmC[1].set((stream3b & 0x7fff)*word0+BrFcIdx );
+            cmC[1].set((x4 & 0xff0000ff) | ((stream3b & 0xe07) << 8));
+            cmC[1].set((indirectBrByte& 0xffff) | ((stream3b & 0x38) << 16));
+        }
         // Indirect byte with sentence word(1) and current byte
         if (isMath) cmC[0].sets(); else cmC[0].set((indirectByte& 0xff00)+257 * worcxt.Word(1)*53+(c1 ));
 
@@ -4385,12 +4451,12 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC1[3].set((stream3b & stream3bMask)*256 | (stream2b &stream2bMask& 255) );
         cmC1[3].set(x4);
         // Word stream. word(1) with first char context and last bit3word(1-x)
-        cmC2[9].set(257 * (*pWord).Hash+fccontext + 193 * (stream3b & stream3bMask));
+         cmC2[9].set(257 * (*pWord).Hash+fccontext + 193 * (stream3b & stream3bMask));
         // First char, current byte and non repeating bit2word(1-6)
         cmC2[9].set(fc|((stream2bR & 0xfff) << 9) | ((c1  ) << 24));//end is good (lang)
 
         cmC2[16].set(  worcxt.fword*83+(stream2b & 15)*11+brcontext); // all category/language/image links (better as standalone)
-        cmC2[17].set( worcxt.Last(1,Verb)+worcxt.Word(1)*83+h);
+        if (skipM1) cmC2[17].sets(); else  cmC2[17].set( worcxt.Last(1,Verb)+worcxt.Word(1)*83+h);
 
         cmC2[9].set((x4 & 0xffff00)+ brcontext+(fccontext<< 24));
         // Wikipedia has lot of links in form: [word word ...]. We collect context of whole link as singele word, no gaps.
@@ -4434,7 +4500,7 @@ int modelPrediction(int c0,int bpos,int c4){
         // In Column: when col is max(31) use last two bytes only otherwise add above bytes
         if (isParagraph==1) {
             // word
-            if (c1==ESCAPE || fccontext==HTLINK || fccontext==CURLYOPENING || isMath|| isPre) {
+            if (c1==ESCAPE || fccontext==HTLINK || fccontext==CURLYOPENING || isMath|| isPre    ) {
                 cmC2[12].sets();
             } else {
                 cmC2[12].set(h+worcxt.Word(1) *53 *79+worcxt.Word(3) *53*47 *71);
@@ -4473,7 +4539,7 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC[3].set(((stream3bR&7)<< 10) + (stream2b&3)+fc*4+ (BrFcIdx<< 24));
         // Current word or number
         cmC[3].set( ((linkword?linkword:word0)*3301+number0*3191));
-        if (c1==ESCAPE|| utf8left || fccontext==CURLYOPENING || fccontext==HTLINK || fc==SPACE || fc==HTML ||brcontext==LESSTHAN|| col<2 || isMath ||  (worcxt.sBytes(0)>>8)=='\\') {
+        if (c1==ESCAPE||  (skipM1) || utf8left || fccontext==CURLYOPENING || fccontext==HTLINK || fc==SPACE || fc==HTML ||brcontext==LESSTHAN|| col<2 || isMath ||  (worcxt.sBytes(0)>>8)=='\\') {
             // Disabled when: 
             // escaped utf8, template (onliner) or table beginning, 
             // html link, html (tag), fist char space,
@@ -4481,7 +4547,7 @@ int modelPrediction(int c0,int bpos,int c4){
             cmC2[14].sets();//end - fc [ ?????
         } else {
             // Word/centence and non-repeating bit3words upto word(2) with bracket/firstchar index
-            cmC2[14].set(BrFcIdx+ worcxt.Word(2) * (stream3bR&stream3bRMask2)+(wType&63));
+            cmC2[14].set(BrFcIdx+ worcxt.Word(2) * (stream3bR&stream3bRMask2)+(worcxt.Type(1)&(0x1ff))); //FIXME type, mybe wordcount and use worcxt1 type
         }
         // Local, small memory
         if (c1==ESCAPE|| utf8left || fc==SPACE) {
@@ -4513,16 +4579,8 @@ int modelPrediction(int c0,int bpos,int c4){
         AH2=hash(19,     x5&0x80ffff);
     }
 
-    dcsm.set((word0*191)*256+x.c0,x.y);
-    dcsm.set((word0*191+worcxt.Word(1))*256+x.c0,x.y);
-    dcsm.set((word0*191+worcxt.Word(2))*256+x.c0,x.y);
-    dcsm.set((word0*191+worcxt.Word(3))*256+x.c0,x.y);
-    dcsm.set((word0*191+worcxt.Word(4))*256+x.c0,x.y);
- 
     //indirectBrByte
     const int c0b=c0<<(8-bpos);
-    dcsm1.set( (indirectBrByte)*256+x.c0,x.y);
-    dcsm1.set( (cxtind3)*191+x.c0,x.y);
 
     scmA[0].mix(sscmrate);
     scmA[1].mix(sscmrate);
@@ -4534,6 +4592,7 @@ int modelPrediction(int c0,int bpos,int c4){
     scmA[6].mix(sscmrate);
   
     isMatch=MatchModel2mix();
+    
     smatch.p();
     // Order X
     ordX=0;
@@ -4546,8 +4605,8 @@ int modelPrediction(int c0,int bpos,int c4){
     ordX=ordX+cmC2[2].mix();
     ordX=ordX+cmC2[3].mix();
     ordW=cmC2[4].mix();
-    if (ordW>=3) ordW=2;
-    ordW=ordW+cmC2[5].mix();if (ordW>3) ordW=3;
+    ordW=ordW+cmC2[5].mix();
+    if (ordW>3) ordW=3;
     cmC2[6].mix();
     cmC2[7].mix();
     cmC2[8].mix();
@@ -4576,9 +4635,7 @@ int modelPrediction(int c0,int bpos,int c4){
     cmC1[7].mix();
     cmC1[8].mix();
     rcmA[0].mix();
-    dcsm.mix();
-    dcsm1.mix();
-   
+
     // Mixer
     
     // reference
@@ -4705,7 +4762,6 @@ int modelPrediction(int c0,int bpos,int c4){
 }
 
 int rate=6;
-
 void update() {
     x.c0+=x.c0+x.y;
    
@@ -4743,8 +4799,11 @@ void update() {
     mxA[10].update(x.y);
     mxA[11].update(x.y);
     mxA[12].update(x.y);
+    //printf("mixer 0 predictor count %d\n",x.mxInputs1.ncount);
     x.mxInputs1.ncount=0;
+    //printf("mixer 1 predictor count %d\n",x.mxInputs2.ncount);
     x.mxInputs2.ncount=0;
+    //printf("mixerf predictor count %d\n",x.mxInputs3.ncount);
     x.mxInputs3.ncount=0;
     // This part is from paq8hp12
     if (fails&0x00000080) --failcount;
@@ -4777,7 +4836,6 @@ void update() {
     
     if (fails&255) pr=(pt*6+pu  +pv*11+pz*14 +31)>>5;
     else           pr=(pt*4+pu*5+pv*12+pz*11 +31)>>5;
-
 }
 
 // Encoder
@@ -4856,13 +4914,15 @@ public:
   // Compress one byte
   void compress(int c) {
     assert(mode==COMPRESS);
-     c=charSwap(c);
+    // c=charSwap(c);
       for (int i=7; i>=0; --i)
         code((c>>i)&1);
         //if (!(x.blpos&0x3ffff))  fprintf(stderr,"%d  %d\n",x.blpos,size()-scompsize), scompsize=size();
         if (x.blpos % percent == 0) {
       double frac = 100.0 * pos / input_bytes;
       fprintf(stderr, "%.2f %d %d   %.2f h\n", frac, size(),size()-scompsize,(((double(clock()-start)/CLOCKS_PER_SEC)*100.0/frac)/60)/60);scompsize=size();
+      //skipc=0;
+
     }
   }
 
@@ -4871,7 +4931,7 @@ public:
       int c=0;
       for (int i=0; i<8; ++i)
         c+=c+decode();
-        c=charSwap(c);
+        //c=charSwap(c);
       return c;
   }
   
@@ -4958,12 +5018,10 @@ int main(int argc, char** argv) {
     statetable.Init(33, 31, 31, 24, 20, 4, 33,&STA5[0][0]);
     statetable.Init(28, 29, 30, 30, 23, 3, 22,&STA6[0][0]);
     statetable.Init(28, 29, 33, 23, 23, 6, 14,&STA7[0][0]);
-    pre2(&STA7[0][0]);
     // Load dictionary
     dosym();
     so=&sonull;
     colonstr=so;
-
     if (argv[1][0]=='c') {     
         // Compress
         // Encode header: signature, version, file size
@@ -5006,6 +5064,8 @@ int main(int argc, char** argv) {
     fclose(out);
     return 0;
 }
+
+
 
 
 
