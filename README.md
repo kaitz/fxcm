@@ -31,6 +31,8 @@ Dictionary encode/decode [DIC](https://github.com/kaitz/fxd). Wikipedia transfor
 |fxcm v14|enwik9|WIT,DIC|593869820|125483355|16174| 1834|
 |fxcm v15|enwik9|-|1000000000|133766633|28995| 1834|
 |fxcm v16|enwik9|WIT,DIC|593869820|125314546|16350| 1834|
+|fxcm v24|enwik8|WIT,DIC|57121234*|15395484|2922| 4482|
+|fxcm v24|enwik9|WIT,DIC|594026973*|121823599|27055| 4482|
 |paq8pxd_v107 -s7|enwik8|DIC-(internal)|100000000|16408142|11189|1460|
 |paq8pxd_v107 -s8|enwik8|DIC-(internal)|100000000|16182108|11473|2264|
 |paq8n -8|enwik8|-|100000000|17916450|5663|1567|
@@ -42,6 +44,8 @@ Dictionary encode/decode [DIC](https://github.com/kaitz/fxd). Wikipedia transfor
 |paq8hp12any|enwik8|WIT,DIC|57088865|16131394|2393|1813|
 |paq8hp12any|enwik9|WIT,DIC|593869820|130573629|24396|1813|
 
+*Input was parsed with updated DIC.
+  
 Test computer parameters: Intel Core i5 4460 3.2GHz, DDR3 PC3-12800 (800MHz) 32GB.
 
 fxcm v1,3,.. is for enwi8, enwik9 or any wiki dump.
