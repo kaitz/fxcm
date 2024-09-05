@@ -2206,6 +2206,24 @@ struct WordsContext {
             }
         }
     }
+    U32  __attribute__ ((noinline)) Word0(int i=1){
+        const int num=vec_size(&stem);
+        U8 lb=sBytes(i)&0xff;
+        int idx=0;
+        if (i==3) idx=47*53*83;
+        else if (i==2) idx=53*83;
+        else if (i==1) idx=83;
+        if (lb==LF){
+        
+        if (i==3 && lb==LF) idx=idx*47;
+        else if (i==2) idx=idx*53;
+        else if (i==1) idx=idx*83;
+        }
+        if (num>=i) return vec_at(&stem,num-(i))*idx;
+        else return 0;
+        //word3=word3*47, word2=word2*53, word1=word1*83;
+    }
+    
 };
 
 inline U32 hash(U32 a, U32 b, U32 c=0xffffffff) {
@@ -3166,7 +3184,7 @@ U32 t[14];
 
 int c1,c2,c3;
 U8 words,spaces,numbers;
-U32 word0,word1,word2,word3,wshift,x4,x5,isMatch,firstWord,linkword,senword;
+U32 word0,wshift,x4,x5,isMatch,firstWord,linkword,senword;
 U32 number0,number1,numlen0,numlen1,mybenum;
 // First char context index, bracket/first char context index (max value 7)
 U32 FcIdx=0,BrFcIdx;
@@ -3235,9 +3253,10 @@ BracketContext<U8> brcxt;
 BracketContext<U8> qocxt;
 BracketContext<U8> fccxt;
 ColumnContext colcxt;
-WordsContext worcxt;
+WordsContext worcxt; // decoded 
 WordsContext worcxt1;
 WordsContext worcxt2;
+WordsContext worcxt0; // undecoded
 BracketContext<U16> htcxt;
 
 SparseMatchModel smatch;
@@ -3343,6 +3362,7 @@ void PredictorInit() {
     worcxt.Init();
     worcxt1.Init();
     worcxt2.Init();
+    worcxt0.Init();
     htcxt.Init(&html[0],2,false,0xfff);
     
     smatch.Init();
@@ -3863,6 +3883,7 @@ int modelPrediction(int c0,int bpos,int c4){
             }
                 else if (c2=='/' && c3==LESSTHAN) reChar=c3;  // </ to <
                  worcxt.Set(reChar,c2==FIRSTUPPER?1:0); 
+                 worcxt0.Set(reChar,c2==FIRSTUPPER?1:0); 
                  worcxt1.Set(reChar);
             }
 
@@ -3947,9 +3968,7 @@ int modelPrediction(int c0,int bpos,int c4){
             if (word0){
                 // Skip some word tpyes in main word order
                 if (((*pWord).Type&(ConjunctiveAdverb+Conjunction))==0 ){
-                    word3=word2*47;
-                    word2=word1*53;
-                    word1=word0*83;
+                    worcxt0.Update(word0,c1!=LF?c1:0,0,word0);
                 }
                 if (worcxt.Type(1)==Number){
                     stream3bR=(stream3bR<<7)+1;
@@ -3958,7 +3977,7 @@ int modelPrediction(int c0,int bpos,int c4){
                 if(firstWord==0 && fccxt.cxt!=SQUAREOPEN) {
                     firstWord=word0;
                 }
-                // Separate at Conjunction(ok), Article(good)
+                // Separate at Conjunction(ok)
                 if (worcxt.Type()&(Conjunction) ){
                     stream3bR=stream3bR<<7;
                     stream3b=stream3b<<7;
@@ -3981,7 +4000,7 @@ int modelPrediction(int c0,int bpos,int c4){
                     worcxt.Remove();
                     }
                 }
-
+                // Article(good)
                 if ((worcxt.Type()&(Noun) )&& worcxt.Type(2)&(Article)){
                     stream3bR=(stream3bR<<6)+1;
                     stream3b=(stream3b<<6)+1;
@@ -4037,7 +4056,6 @@ int modelPrediction(int c0,int bpos,int c4){
                 spaces++;
             }
             else if (c1==LF) {
-                
                 fc=isParagraph=firstWord=lastWT=0;
                 nl1=nl;
                 nl=pos-1;
@@ -4168,7 +4186,8 @@ int modelPrediction(int c0,int bpos,int c4){
                     fccxt.Reset();
                     brcxt.Reset();
                     qocxt.Reset();
-                    htcxt.Reset();
+                    htcxt.Reset(); 
+                    worcxt0.Reset();
                 }
                 fc=colcxt.lastfc();
                 // Reset first char context when there is >. For filtered wiki.
@@ -4207,7 +4226,12 @@ int modelPrediction(int c0,int bpos,int c4){
                     while (fccxt.cxt==COLON) fccxt.Update(LF);
                 }
         }
-        if (c1==COLON &&(strcmp(colonstr, "category")==0 ||strcmp(colonstr, "wikipedia")==0))fccxt.Update(LF),worcxt.Remove();
+        // wiki links with [catecory:...] or [wikipedia:...], remove word and reset first char colon context
+        if (c1==COLON &&(strcmp(colonstr, "category")==0 ||strcmp(colonstr, "wikipedia")==0)) {
+            fccxt.Update(LF);
+            worcxt.Remove();
+            worcxt0.Remove();
+        }
 
         if (c1==SPACE && c2==LESSTHAN) fccxt.Update(GREATERTHAN); // Probably math operator, ignore
         // Switch from possible category link to http link ( [word:// to [http:// )
@@ -4251,7 +4275,7 @@ int modelPrediction(int c0,int bpos,int c4){
         if ((colcxt.lastfc(0)==APOSTROPHE||  (fc==APOSTROPHE &&(colcxt.lastfc(0)!='*')) ) && (c1==SPACE)) {
             if(c2==APOSTROPHE || c3==APOSTROPHE ){
                 fc=FIRSTUPPER;
-                isParagraph=1;            // Paragraph
+                isParagraph=1;    // Paragraph
                 fccxt.Reset();    // Not really needed
                 fccxt.Update(fc); //
             }  
@@ -4260,9 +4284,11 @@ int modelPrediction(int c0,int bpos,int c4){
             fc=HTLINK;
         }
         // Words surrounded by ()
+        //worcxt0.removeWordsL(8,'(',')');
         worcxt.removeWordsL(8,'(',')');
         worcxt1.removeWordsL(8,'(',')');
         // Words surrounded by [|  as wiki internal link: word [word word|word] word.
+        worcxt0.removeWordsL(8,SQUAREOPEN,VERTICALBAR);
         worcxt.removeWordsL(8,SQUAREOPEN,VERTICALBAR);
         worcxt1.removeWordsL(8,SQUAREOPEN,VERTICALBAR);
         worcxt.removeWordsL(8,LESSTHAN,COLON);
@@ -4270,6 +4296,7 @@ int modelPrediction(int c0,int bpos,int c4){
         // Template - surrounded by = |
         if (colcxt.isTemp==true) worcxt.removeWordsR(10,EQUALS,VERTICALBAR);
         // Remove words between < >
+        worcxt0.removeWordsL(8,LESSTHAN,GREATERTHAN);
         worcxt.removeWordsL(8,LESSTHAN,GREATERTHAN);
         worcxt1.removeWordsL(8,LESSTHAN,GREATERTHAN);
 
@@ -4312,7 +4339,7 @@ int modelPrediction(int c0,int bpos,int c4){
 
         // Contexts
         // Set run context with word(3), current byte and bit3word(1-5)
-        rcmA[0].set(word3*53+c1+193 * (stream3b & 0x7fff),c1);
+        rcmA[0].set(worcxt0.Word0(3)+c1+193 * (stream3b & 0xfff),c1);// needs work
         // Word stream cm(4-5)
         if (col<2 || fc==SPACE  ) {
             cmC2[4].sets(); 
@@ -4324,65 +4351,69 @@ int modelPrediction(int c0,int bpos,int c4){
             // Disabled when:
             // & is line first char (HTML)
             // escaped UTF8
-            if (colcxt.lastfc()=='&' || utf8left) cmC2[4].sets();
-            else cmC2[4].set(h+word1);
+            if (colcxt.lastfc()=='&' || utf8left) 
+                cmC2[4].sets();
+            else 
+                cmC2[4].set(h+worcxt0.Word0(1));
             
             if (brcxt.cxt==LESSTHAN) cmC2[17].sets(); else cmC2[17].set(worcxt1.Word(1)*53+worcxt1.Word(2)*11+h+(lastWT&0xf));
         }
         if (c1==ESCAPE||col<2 ||utf8left ||fc==SPACE) {
             cmC2[5].sets(); 
         } else {
-             if ( isMatch>61) cmC2[5].sets(); else  cmC2[5].set(h+ word2*71);
+            if ( isMatch>61) cmC2[5].sets(); else  cmC2[5].set(h+ worcxt0.Word0(2)*71);
         }
-       if (fc==SPACE ||brcxt.cxt==LESSTHAN) {
-               cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); 
-               cmC1[8].sets();  cmC1[8].sets();
+        if (fc==SPACE ||brcxt.cxt==LESSTHAN) {
+            cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); cmC2[5].sets(); 
+            cmC1[8].sets(); cmC1[8].sets();
         } else {
-        // Last sentence word(4) that is not Adjective with last Adjectiv stream word in a line.
-        cmC2[5].set(worcxt.Word(4)*53+worcxt1.Word(1)+h+(stream3b & 511));
-        // Last sentence word(4+) that is not Verb (when found 4+) with last Verb in a line.
-        cmC2[5].set(worcxt.Last(4,worcxt.Type(4)^Verb)*53+sVerb+h+(stream3bR & 63));
-        cmC2[5].set(worcxt.fword*53+worcxt1.Word(1)+h+(stream3b & 63));
-      
-        cmC2[5].set(worcxt2.Word(1)+worcxt2.Word(2)*11+word00+c1);
-        // Look for last verb in paragraph if found set with word ()
-        const U32 lastParVerb=worcxt2.LastIf(1,worcxt.Type(1)&Verb);
-        if (lastParVerb) cmC2[5].set(lastParVerb*11+word00+c1);
-        else cmC2[5].sets();
-        cmC1[8].set(h+word1);
-       cmC1[8].set(worcxt1.Word(1)*53+worcxt1.Word(2)*11+h); 
+            // Last sentence word(4) that is not Adjective with last Adjectiv stream word in a line.
+            cmC2[5].set(worcxt.Word(4)*53+worcxt1.Word(1)+h+(stream3b & 511));
+            // Last sentence word(4+) that is not Verb (when found 4+) with last Verb in a line.
+            cmC2[5].set(worcxt.Last(4,worcxt.Type(4)^Verb)*53+sVerb+h+(stream3bR & 63));
+            cmC2[5].set(worcxt.fword*53+worcxt1.Word(1)+h+(stream3b & 63));
+            cmC2[5].set(worcxt2.Word(1)+worcxt2.Word(2)*11+word00+c1);
+            // Look for last verb in paragraph if found set with word ()
+            const U32 lastParVerb=worcxt2.LastIf(1,worcxt.Type(1)&Verb);
+            if (lastParVerb) 
+                cmC2[5].set(lastParVerb*11+word00+c1);
+            else 
+                cmC2[5].sets();
+            cmC1[8].set(h+worcxt0.Word0(1));
+            cmC1[8].set(worcxt1.Word(1)*53+worcxt1.Word(2)*11+h); 
         }
         // current word and word(1) type upto preffix(not included), paragraph word(1) 
         cmC1[6].set(h+(worcxt.Type(1)&(0x1FF))+worcxt1.Word(1)); 
         
-        if ( isMatch>61) cmC2[6].sets(); else  cmC2[6].set(((stream2b&15)<<16)+(t[2]&0xffff));  // o2
+        if ( isMatch>61) cmC2[6].sets(); else cmC2[6].set(((stream2b&15)<<16)+(t[2]&0xffff));  // o2
 
         if (c1==ESCAPE || utf8left || fccontext==CURLYOPENING) 
             cmC2[7].set(0);
         else 
             cmC2[7].set(indirectBrByte);
+
         if (skipM1) {
             cmC2[8].sets();
             cmC2[8].sets();
             cmC2[8].sets();
-        }else{
-        
-        cmC2[8].set( ((indirectBrByte>>0)&0x7ff)*32 + ((stream4b & 0xfff0) << 16)+BrFcIdx);
-        cmC2[8].set((stream3bR&0x3fffffff)*4+(stream2b&3));
-        cmC2[8].set((fccontext*4) + ((stream3bR & 0x3ffff) << 9 )+BrFcIdx);
-      }
+        } else {
+            cmC2[8].set( ((indirectBrByte>>0)&0x7ff)*32 + ((stream4b & 0xfff0) << 16)+BrFcIdx);
+            cmC2[8].set((stream3bR&0x3fffffff)*4+(stream2b&3));
+            cmC2[8].set((fccontext*4) + ((stream3bR & 0x3ffff) << 9 )+BrFcIdx);
+        }
         if (fccontext==HTLINK) 
             cmC2[8].sets();
         else
             cmC2[8].set((c4 & 0xffffff) + ((stream2b << 18) & 0xff000000));
+
         if (skipM1) {
             cmC1[0].sets();
             cmC1[0].sets();
-            
         }else{
-        cmC1[0].set(colcxt.lastfc(0) | (fccontext<< 15) | ((stream3b & 63) << 7)|(brcontext << 24) );
-        cmC1[0].set((colcxt.lastfc(0) | ((c4 & 0xffffff) << 8)));
-         }
+            cmC1[0].set(colcxt.lastfc(0) | (fccontext<< 15) | ((stream3b & 63) << 7)|(brcontext << 24) );
+            cmC1[0].set((colcxt.lastfc(0) | ((c4 & 0xffffff) << 8)));
+        }
+
         cmC1[1].set( (stream2b & 3) +word00*11);
         cmC1[1].set(c4 & 0xffff);
         cmC1[1].set(((fc << 11) | c1)+((stream2b & 3)<< 18));
@@ -4399,13 +4430,13 @@ int modelPrediction(int c0,int bpos,int c4){
         if (fc==SPACE) 
             cmC1[4].sets();
         else
-        cmC1[4].set((c1 + ((stream3b & 0xe38) << 6)) );
+            cmC1[4].set((c1 + ((stream3b & 0xe38) << 6)) );
 
         cmC1[4].set(worcxt.fword*11+BrFcIdx);
         cmC1[4].set(c1+word0+number0*191 );//00
         cmC1[4].set(((c4 & 0xffff) << 16) | (fccontext  << 8) |fc);
         cmC1[4].set(((stream3bR & 0xfff)<< 8)+((stream2b & 0xfc)));
-        if (c1==ESCAPE  ) {
+        if (c1==ESCAPE) {
             cmC[0].sets();cmC[0].sets();cmC[0].sets();
             cmC[0].sets();cmC[0].sets();cmC[0].sets();
         } else {
@@ -4451,7 +4482,7 @@ int modelPrediction(int c0,int bpos,int c4){
         cmC1[3].set((stream3b & stream3bMask)*256 | (stream2b &stream2bMask& 255) );
         cmC1[3].set(x4);
         // Word stream. word(1) with first char context and last bit3word(1-x)
-         cmC2[9].set(257 * (*pWord).Hash+fccontext + 193 * (stream3b & stream3bMask));
+        cmC2[9].set(257 * (*pWord).Hash+fccontext + 193 * (stream3b & stream3bMask));
         // First char, current byte and non repeating bit2word(1-6)
         cmC2[9].set(fc|((stream2bR & 0xfff) << 9) | ((c1  ) << 24));//end is good (lang)
 
@@ -4469,7 +4500,8 @@ int modelPrediction(int c0,int bpos,int c4){
         else {
             if (fc==HTML ||brcontext==LESSTHAN) 
                 cmC2[9].sets();
-            else cmC2[9].set(0);
+            else 
+                cmC2[9].set(0);
         }
         
         cmC2[10].set(indirectByte);
@@ -4568,7 +4600,11 @@ int modelPrediction(int c0,int bpos,int c4){
         scmA[5].set(brcontext);
         scmA[6].set(isParagraph+ 2*((stream3bR&0x3f)) );
         if (wshift||c1==LF) {
-            word3=word3*47, word2=word2*53, word1=word1*83;
+            U16 sb=worcxt0.sBytes(1);
+            U32 w=worcxt0.Word(1);
+            worcxt0.Remove();
+            worcxt0.Set(sb>>8,0);
+            worcxt0.Update(w,LF,0,w);
             wshift=0;
             if (c1==LF)sVerb=0;
         }
@@ -4676,8 +4712,18 @@ int modelPrediction(int c0,int bpos,int c4){
     mxA[2].cxt=((4 * words) & 0xf0) + ordX*256 + (stream2b & 15);
     
     // mixer 6
-    // at bpos=0-7   context is non-repeating 2 bit3word of byte(2,3), was byte(1-3) a word and last 1 bit2word
-    mxA[6].cxt=((stream3bR) & 0xff8)*4 + ((2 * words) & 0x1c) + (stream2b & 3);
+    // at bpos=0   context is non-repeating 2 bit3word of byte(2,3), first char/bracket index (max 7) and last 1 bit2word
+    // at bpos=1-3 context is non-repeating 2 bit3word of byte(2,3), was byte(1-3) a word and last 1 bit2word
+    // at bpos=4-7 context is non-repeating 2 bit3word of byte(2,3), last 1 bit2word and last partialy decoded bit2word
+    if (bpos>3) {
+        c=wrt_2b[c0b&255];
+        mxA[6].cxt=((stream3bR) & 0xff8)*4 + ((stream2b & 3)*4) + (c );
+    }
+    else if (bpos==0) 
+        mxA[6].cxt=((stream3bR) & 0xff8)*4 + ((4 * FcIdx) ) + (stream2b & 3);
+    else
+        mxA[6].cxt=((stream3bR) & 0xff8)*4 + ((2 * words) & 0x1c) + (stream2b & 3);
+
     c=c0b;
     
     // mixer 3
