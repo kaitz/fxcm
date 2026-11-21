@@ -18,6 +18,8 @@ Sorted by compressed size.
 |fxcm v17|100000000|16542325|2909|1832|
 |fxcm v15|100000000|16525095|3112|1833|
 |paq8px_v208fix1 -8|100000000|16499082|23498|2163|
+|[fxcm_text v1](https://github.com/kaitz/fxcm/releases/tag/text_v1)|100000000|16371534|2341|1842|
+
 
 ## enwik9
 Sorted by compressed size.
@@ -31,6 +33,7 @@ Sorted by compressed size.
 |fxcm v13|1000000000|133953288|27223|1832|
 |fxcm v17|1000000000|133973860|27124|1832|
 |fxcm v15|1000000000|133766633|24533|1834|
+|[fxcm_text v1](https://github.com/kaitz/fxcm/releases/tag/text_v1)|1000000000|132351518|22594|1842|
 
 ## enwik8 + transforms
 | |Transforms|Size|Compressed|Time sec|Memory MB
