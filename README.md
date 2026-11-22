@@ -18,8 +18,8 @@ Sorted by compressed size.
 |fxcm v17|100000000|16542325|2909|1832|
 |fxcm v15|100000000|16525095|3112|1833|
 |paq8px_v208fix1 -8|100000000|16499082|23498|2163|
+|[paq8px_v217 -8](https://github.com/hxim/paq8px/tree/553024fcb4a5a4dfa16204d0313fd4ee43e5a8ac)|100000000|16379368|19236|2182|
 |[fxcm_text v1](https://github.com/kaitz/fxcm/releases/tag/text_v1)|100000000|16371534|2341|1842|
-
 
 ## enwik9
 Sorted by compressed size.
