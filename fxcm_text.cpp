@@ -28,7 +28,7 @@ fxcm
 
 */
 
-#define VERSION 1
+#define VERSION 2
 
 #include <cstdint>
 #include <stdio.h>
@@ -97,7 +97,7 @@ struct BlockData {
         short *n,*ptr;
         void add(int p){ n[ncount++]=p; }
     };
-    Inputs mxInputs[2]; // array of inputs, for two layers
+    Inputs mxInputs[3]; // array of inputs, for two layers
 
     void Init(){
         y=0 ,c0=1, c4=0,bpos=0,blpos=0,bposshift=0,c0shift_bpos=0 ;
@@ -1834,6 +1834,7 @@ struct BracketContext {
     const T *element;           
     int elementCount;
     bool doPop;            // set true for quotes
+    bool stateChange;
     int limit;
     T cxt,dst;
 
@@ -1845,6 +1846,7 @@ struct BracketContext {
         limit=l;
         vec_new(&active,'b');
         vec_new(&distance,'b');
+        stateChange=false;
     }
     void Reset(){
         vec_reset(&active);
@@ -1869,11 +1871,13 @@ struct BracketContext {
     }
     void __attribute__ ((noinline)) Update(int byte) {
         bool pop=false;
+        stateChange=false;
         if (!vec_empty(&active)) {
             if (FindEnd(vec_at(&active,vec_size(&active)-1) , byte) || vec_at(&distance,vec_size(&distance)-1) >= limit) {
                 vec_pop(&active);
                 vec_pop(&distance);
                 pop=doPop;
+                stateChange=true;
             } else {
                 vec_i(&distance,vec_size(&distance)-1);
             }
@@ -1881,6 +1885,7 @@ struct BracketContext {
         if (pop==false && Find(byte)) {
             vec_push( &active,byte);
             vec_push( &distance,0);
+            stateChange=true;
         }
         if (!vec_empty(&active)) {
             cxt=vec_at(&active,vec_size(&active)-1);
@@ -2118,8 +2123,6 @@ const U32 m_s[10]={194, 237, 204, 70, 54, 55,55, 70,55, 6};// mixer shift
 const U32 m_m[10]={36,   69,  19, 34, 23, 24,24, 34,24,4};// mixer error mul
 
 const U32 c_r[27]= { 3,  4,  6,  4,  6,  6,  2,  3,  3,  3,  6,  4,  3,  4,  5,  6,  2,  6,  4,  4,  4,  4,  4,  4,  4,  4,  4};  // contextmap run mul
-const U32 c_s[27]= {28, 26, 28, 31, 34, 31, 33, 33, 35, 35, 29, 32, 33, 34, 30, 36, 31, 32, 32, 32, 32, 32, 33, 32, 32, 32, 32};  // contextmap pr mul
-const U32 c_s2[27]={12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12};  // ...
 const U32 c_s3[27]={43, 33, 34, 28, 34, 29, 32, 33, 37, 35, 33, 28, 31, 35, 28, 30, 33, 34, 32, 32, 32, 32, 32, 32, 32, 32, 32};
 const U32 c_s4[27]={ 9,  8,  9,  5,  8, 12, 15,  8,  8, 12, 10,  7,  7,  8, 8, 13, 13, 14,  8,  8, 12, 12, 12, 12, 12, 12, 12};
  
@@ -2134,6 +2137,7 @@ U32 word0,word1,word2,word3,words,spaces,wshift,w4,w4r,w4br,x4,x5,ismatch,firstW
 U32 lastword0,lineSP;
 U32 fqcxt=0;
 U32 AH1=0,AH2=0x765BA55C;
+int rate=6;
 U32 fails=0, failz=0, failcount=0;
 int nl,col,fc,fc1,nl1;
 U32 t1[0x100];
@@ -2150,10 +2154,12 @@ enum {BMASK=0xffffff};
 int pos;
 int pr; 
 bool isPage=false;
+bool isPDFText=false;
 
 StateMap smA[3];
 SmallStationaryContextMap scmA[8];   
 Mixer1 mxA[10]; 
+Mixer1 mxAX[9]; 
 ContextMap3 cmC3[16];
 ContextMap3 cmCS[6];
 ContextMap4 cmC4[5];
@@ -2175,7 +2181,7 @@ void PredictorInit() {
     for (int i=0;i<8;i++){ 
         scmA[i].Init(8); 
     }
-
+    // Layer 0
     mxA[1].Init(2*256,m_s[1],m_e[1],m_m[1]);
     mxA[2].Init(6*256,m_s[2],m_e[2],m_m[2]);
     mxA[3].Init(6*256,m_s[3],m_e[3],m_m[3]);
@@ -2184,7 +2190,16 @@ void PredictorInit() {
     mxA[6].Init(7*256*4,m_s[6],m_e[6],m_m[6]);
     mxA[7].Init(8*256,m_s[7],m_e[7],m_m[7]);
     mxA[8].Init(8*256,m_s[8],m_e[8],m_m[8]);
-    mxA[9].Init(8*7*2,m_s[9],m_e[9],m_m[9]);
+    mxA[9].Init(1,m_s[9],m_e[9],m_m[9]);       // Layer 2 - final
+    // Layer 1
+    mxAX[1].Init(2*256,8,m_e[1],13);
+    mxAX[2].Init(6*256,8,m_e[2],13);
+    mxAX[3].Init(6*256,8,m_e[3],13);
+    mxAX[4].Init(8*256,8,m_e[4],13);
+    mxAX[5].Init(6*256,8,m_e[5],13);
+    mxAX[6].Init(7*256*4,8,m_e[6],13);
+    mxAX[7].Init(8*256,8,m_e[7],13);
+    mxAX[8].Init(8*256,8,m_e[8],13);
     
     apmA[0].Init(256);
     apmA[1].Init(0x8000*2);
@@ -2196,8 +2211,9 @@ void PredictorInit() {
 
     x.mxInputs[0].ncount=254;
     x.mxInputs[1].ncount=9;
+    x.mxInputs[2].ncount=9;
     
-    for (int j=0;j<2;j++)  {
+    for (int j=0;j<3;j++)  {
         x.mxInputs[j].ncount=(x.mxInputs[j].ncount+16)&-16;
         alloc1(x.mxInputs[j].n,x.mxInputs[j].ncount+32,x.mxInputs[j].ptr,32);
     }     
@@ -2205,7 +2221,9 @@ void PredictorInit() {
     for (int i=1;i<9;i++)
          mxA[i].setTxWx(x.mxInputs[0].ncount,&x.mxInputs[0].n[0]);
     // Final mixer
-    mxA[9].setTxWx(x.mxInputs[1].ncount,&x.mxInputs[1].n[0]);
+    for (int i=1;i<9;i++)
+         mxAX[i].setTxWx(x.mxInputs[1].ncount,&x.mxInputs[1].n[0]);
+    mxA[9].setTxWx(x.mxInputs[2].ncount,&x.mxInputs[2].n[0]);
     cmC3[0].Init( 8*4096*4096,3,c_r[0],c_s3[0],ST6,c_s4[0],0xf0,1,&st2_p1[0]);
     cmC3[1].Init( 8*4096*4096,1,c_r[1],c_s3[1],ST6,c_s4[1],0xf0,0,&st2_p1[0]);
     cmC3[2].Init( 8*4096*4096,1,c_r[2],c_s3[2],ST6,c_s4[2],0xf0,0,&st2_p1[0]);
@@ -2459,7 +2477,7 @@ void MatchModel2update() {
       AddCandidates(matches, LEN2); //middle
     matches->Add(pos);
 
-    hash = t[LEN1];
+    hash = x4;//t[LEN1];
     matches = &mhashtable[(hash& mhashtablemask)];
     if (numberOfActiveCandidates < matchN)
       AddCandidates(matches, LEN1); //shortest
@@ -2567,6 +2585,15 @@ int modelPrediction(int c0,int bpos,int c4) {
         buffer[pos&BMASK]=c1;
         pos++;
         j=c1;
+        // PDF BT-ET block
+        if (c4==0x0a42540a) {        // '\nBT\n'
+            isPDFText=true;
+        } else if (c4==0x0a45540a) { // '\nET\n'
+            isPDFText=false;
+            brcxt.Reset();
+            fccxt.Reset();
+            qocxt.Reset();
+        }
         bool isUpper=false;
         bool isLetter=false;
         if ( ((j-'A') <= ('Z'-'A'))) j =j+32,isUpper=true;
@@ -2574,50 +2601,50 @@ int modelPrediction(int c0,int bpos,int c4) {
         colcxt.Update(c1,c4&0xffffff);
         // Bracket content update
         if (fccxt.cxt=='&' && !((j-'a') <= ('z'-'a'))) fccxt.Update(';'); //html entity
-        if (c4==0x266C743B) brcxt.Update(LESSTHAN);// '&lt;'  '&gt;'
-        else if (c4==0x2667743B ) brcxt.Update(GREATERTHAN);
-        else if (c1<128)brcxt.Update( c1 );
+        if (c4==0x266C743B) brcxt.Update(LESSTHAN);             // '&lt;'
+        else if (c4==0x2667743B) brcxt.Update(GREATERTHAN);     // '&gt;'
+        else if (c1<128) brcxt.Update( c1 );
 
         cmCS[4].set((brcxt.context<<8)+c1);
         // Quote content update
         if ((x.c8&0xffffffffffff)==0x2671756F743B) qocxt.Update(QUOTATION); // '&quot;'
         else qocxt.Update(c1); 
         // Look for byte stream x4 and order X context end.
-        if (c1=='$' || c1==VERTICALBAR|| c1==')') {
+        if (isPDFText==false && (c1=='$' || c1==VERTICALBAR || c1==')')) {
                 x4=(x4<<8)+c2;
         }
-        // Update byte bitstreams
-        if (c1!=SQUAREOPEN &&c1!=SQUARECLOSE) x4=(x4<<8)+c1;
-        if (c1!=SQUAREOPEN &&  (c1=='$' || c1==SQUARECLOSE || c1==VERTICALBAR ||
-            c1==APOSTROPHE || c1==QUOTATION || c1==')' || c1=='(')) {
-            w4=w4*4+nStatew4;
-            w4r=(w4r<<2)+nStatew4;
-           ttype=(ttype<<3)+wrt_t[(c1)];
-           wtype=(wtype<<3)+wrt_t[(c1)];
+        
+        if (isPDFText==false) {
+            // Update byte bitstreams (enwik)
+            if (c1!=SQUAREOPEN && c1!=SQUARECLOSE) x4=(x4<<8)+c1;
+            if (c1!=SQUAREOPEN &&  (c1=='$' || c1==SQUARECLOSE || c1==VERTICALBAR ||
+                c1==APOSTROPHE || c1==QUOTATION || c1==')' || c1=='(')) {
+                w4=w4*4+nStatew4;
+                w4r=(w4r<<2)+nStatew4;
+               ttype=(ttype<<3)+wrt_t[(c1)];
+               wtype=(wtype<<3)+wrt_t[(c1)];
+            }
+        } else { // PDF
+            if (brcxt.cxt=='(' && c1!='(')
+            x4=(x4<<8)+c1;
         }
-        // Update byte stream x4 and order X contexts. Keep prelink context state.
-        // For enwik, needs fix (after ~3.6MB -)
-        /*if ((c1==SQUAREOPEN && c2!=SQUAREOPEN) ) {
-            oldx4=x4;
-            for(int i=0; i<14; i++) told[i]=t[i]; // Preserve prelink cxt
+        
+        if (isPDFText && brcxt.cxt=='(' && c1!='(') {
+            for (i=13; i>0; --i)
+                told[i]=told[i-1]*primes[i]+c1+i*256;  
+        } 
+        if ((x.c4&0xffff)!=(32*256+32)) {
+            for (i=13; i>0; --i)
+                t[i]=t[i-1]*primes[i]+c1+i*256;
         }
-
-        //if (c1!=SQUAREOPEN && c1!=SQUARECLOSE) x4=(x4<<8)+c1; // no []
-        // Update main order context if no []<
-        if (c1!=SQUAREOPEN && c1!=SQUARECLOSE ) {
-            //if ((brcxt.cxt==CURLYOPENING || c1==CURLYCLOSE) && isParagraph==1) ;
-            //else
-           if ((x.c4&0xffff)!=(32*256+32)) for (int i=13; i>0; --i)
-                t[i]=t[i-1]*primes[i]+c1+i*256;   
-        }
-        // Restore prelink contexts
-        if ((brcxt.cxt==SQUAREOPEN && c1==VERTICALBAR) ) {
-            for (int i=0; i<14; i++) t[i]=told[i];
-            x4=oldx4;
-        }*/
-        if ((x.c4&0xffff)!=(32*256+32))for (i=13; i>0; --i)
-            t[i]=t[i-1]*primes[i]+c1+i*256;
-        if ((fc==SPACE && c1==SPACE)) {
+        if (isPDFText && brcxt.cxt=='(' && c1!='(') {
+            for (i=3; i<6; ++i)
+                cmC3[0].set(told[i]);
+            cmC3[1].set(told[6]);
+            cmC3[2].set(told[8]);
+        } else if (isPDFText && brcxt.cxt==0 ) {
+            cmC3[0].sets(); cmC3[0].sets(); cmC3[0].sets();cmC3[1].sets();cmC3[2].sets();
+        } else if ((fc==SPACE && c1==SPACE)) {
             cmC3[0].sets(); cmC3[0].sets(); cmC3[0].sets();cmC3[1].sets();cmC3[2].sets();
         } else {
             for (i=3; i<6; ++i)
@@ -2628,16 +2655,18 @@ int modelPrediction(int c0,int bpos,int c4) {
         cmC3[3].set(t[13]);
 
         nState=wrt_t[(c1)];
-
         words=words<<1;
         spaces=spaces<<1;
         numbers=numbers<<1;
-        
-        if (((j-'a') <= ('z'-'a')) || (c1>127 && c2!=12)) {
-            if ( ((words&9)==8 && c2==c3 && c2==SQUARECLOSE)) {
+
+        if (isPDFText && c1=='(' && number0>300) word0=lastword0=0,spaces|=1,words|=2;  // PDF - A number greater than 300 is probably a space between words.
+        if (((j-'a') <= ('z'-'a')) || (c1>127 && c2!=12) || (isPDFText && brcxt.cxt=='(' && c1!='(')) {
+            if (isPDFText==false && ((words&9)==8 && c2==c3 && c2==SQUARECLOSE)) { // wiki
                     word0=lastword0;
                     worcxt.Remove();
             }
+            if (isPDFText && brcxt.cxt=='(' && lastword0) word0=lastword0,words|=2; // PDF
+            
             lastword0=0;    
             if (word0==0){
                 if (c2==ATSIGN)worcxt.Set(c3); else worcxt.Set(c2);
@@ -2653,7 +2682,7 @@ int modelPrediction(int c0,int bpos,int c4) {
             if (((word3bit==5) && (c2==APOSTROPHE))||                    // "x'x" where x is any letter in word
              ((word3bit==1) && (c3==SQUARECLOSE) && (c2==APOSTROPHE))||  // "]'x" where x is any letter in word
              ((word3bit==1) && (numbers&4)&&(c2==APOSTROPHE))            // "y'x" where y is number and x is any letter in word //(c3>='0' && c3<='9') 
-             )qocxt.Update(qocxt.cxt); 
+             ) if (isPDFText==false) qocxt.Update(qocxt.cxt); 
         } else {
             // ' or 0x27 is used for quotes, sometimes it has other meaning
             // remove quote content if any of the fallowing is true
@@ -2685,6 +2714,7 @@ int modelPrediction(int c0,int bpos,int c4) {
             //
             wp[word0&0xffff]=pos;
             if (c1=='+' || (c1==SQUARECLOSE && lastword0==0)) lastword0=word0;
+            if (isPDFText && brcxt.stateChange && c1==')') lastword0=word0;
             word0=0;
             if (c1>='0' && c1<='9') {
                 numbers=numbers+1;
@@ -2704,7 +2734,7 @@ int modelPrediction(int c0,int bpos,int c4) {
             if (c1==SPACE) {
                 spaces++;
             }
-            else if (c1==10 ) {
+            else if (c1==10 || (c1==CURLYOPENING  && isPDFText)) {
                 worcxt.Reset();
                 fc=fc1=firstWord=0;
                 nl1=nl;
@@ -2714,7 +2744,7 @@ int modelPrediction(int c0,int bpos,int c4) {
                 words=0xfffffffc;
                 w4r= w4r<<2;
             }
-            else if ((c1=='.') || c1==')' || c1==QUESTION) {
+            else if ((c1=='.') || (isPDFText==false && c1==')') || c1==QUESTION) {
                 wtype= wtype&0xffffffc0;
                 ttype= ttype<<7;//&0xffffffc0;  ????
                 words= words|0xfffffffe;
@@ -2753,8 +2783,8 @@ int modelPrediction(int c0,int bpos,int c4) {
             if (c1=='.' ) wshift=1,worcxt.Reset();
             else if (c1==SEMICOLON)  worcxt.Reset();
         }
-        
-        x5=(x5<<8)+(c4&0xff);
+        if (isPDFText && brcxt.stateChange) ;
+        else x5=(x5<<8)+(c4&0xff);
         // Switch state if it is new
         if (oStatew4!=nStatew4){
             w4r=(w4r<<2)+nStatew4;
@@ -2786,7 +2816,13 @@ int modelPrediction(int c0,int bpos,int c4) {
                     qocxt.Reset();
                     cmCS[2].reset();
                 }
+                U8 oldfc=colcxt.lastfc(1);
                 fc=colcxt.lastfc();
+                if (oldfc=='.' && isLetter==true) { // book2
+                    fccxt.Reset();
+                    brcxt.Reset();
+                    qocxt.Reset();
+                } 
                 if (isUpper==true && isLetter==true) {
                     fc=ATSIGN;
                 }
@@ -2847,25 +2883,26 @@ int modelPrediction(int c0,int bpos,int c4) {
         if ((fc!=ATSIGN) && ((c4&0xffffff)==0x4a2f2f)) {//http link - fixme
             fc=31;
         }
-        // Words surrounded by ()
-        if ((worcxt.sBytes(1)&0xff)==')' ){
-            bool isC=false;
-            for (int i=1; i<8; i++) if ((worcxt.sBytes(i)>>8)=='(') isC=true;
-            if (isC){
-                while( (worcxt.sBytes(1)>>8)!='(' ) worcxt.Remove();
-                worcxt.Remove();
+        if (isPDFText==false) {
+            // Words surrounded by ()
+            if ((worcxt.sBytes(1)&0xff)==')') {
+                bool isC=false;
+                for (int i=1; i<8; i++) if ((worcxt.sBytes(i)>>8)=='(') isC=true;
+                if (isC) {
+                    while( (worcxt.sBytes(1)>>8)!='(') worcxt.Remove();
+                    worcxt.Remove();
+                }
             }
+            // Words surrounded by [|  as wiki internal link: word [word word|word] word.
+            if ((worcxt.sBytes(1)&0xff)==VERTICALBAR) {
+                bool isC=false;
+                for (int i=1; i<8; i++) if ((worcxt.sBytes(i)>>8)==SQUAREOPEN) isC=true;
+                if (isC) {
+                    while( (worcxt.sBytes(1)>>8)!=SQUAREOPEN) worcxt.Remove();
+                    worcxt.Remove();
+                }
+            } 
         }
-        // Words surrounded by [|  as wiki internal link: word [word word|word] word.
-        if ((worcxt.sBytes(1)&0xff)==VERTICALBAR ){
-            bool isC=false;
-            for (int i=1; i<8; i++) if ((worcxt.sBytes(i)>>8)==SQUAREOPEN) isC=true;
-            if (isC){
-                while( (worcxt.sBytes(1)>>8)!=SQUAREOPEN ) worcxt.Remove();
-                worcxt.Remove();
-            }
-        } 
-
         h=word0*271+number0+c1;
 
         // Indirect
@@ -3150,7 +3187,7 @@ int modelPrediction(int c0,int bpos,int c4) {
     mxA[4].cxt=bpos*256 + (((( (numbers|words)<< bpos)&255)>> bpos) | (c&255));
     // mixer 9 - final mixer
     // at bpos=0-7   context is sum of context order(3-5,6,8) isState counts (max 5), bracket or quote state(0,1) and last 1 bit2word
-    mxA[9].cxt=(ord*8 + (w4br?1:0)*4 + (w4&3));
+    mxA[9].cxt=0;//(ord*8 + (w4br?1:0)*4 + (w4&3));
     
     // mixer 5 
     // at bpos=0   context is bit xxxxxxxx from c0, first char type state(0,1) xxxx1xxx, 2 bit2word            1111xxxx
@@ -3196,7 +3233,7 @@ int modelPrediction(int c0,int bpos,int c4) {
         mxA[8].cxt= wrt_t[c0b&255]*256 +(w4br)*32 + (words&7)*4 + fc1+(ismatch?2:0);
     else
         mxA[8].cxt= (ttype&3)*256 +(w4br)*16 + (words&7)*2 + fc1+(ismatch?128:0);  // fixme
-
+    // Layer 0
     x.mxInputs[1].add(mxA[1].p1());
     x.mxInputs[1].add(mxA[2].p1());
     x.mxInputs[1].add(mxA[3].p1());
@@ -3205,15 +3242,17 @@ int modelPrediction(int c0,int bpos,int c4) {
     x.mxInputs[1].add(mxA[6].p1());
     x.mxInputs[1].add(mxA[7].p1());
     x.mxInputs[1].add(mxA[8].p1());
+    // Layer 1
+    for (int i=1;i<9;i++) mxAX[i].cxt=mxA[i].cxt;
+    for (int i=1;i<9;i++) x.mxInputs[2].add(mxAX[i].p1());
+    // Layer 2
     return mxA[9].p();
 }
-
-int rate=6;
 
 void update() {
     x.c0+=x.c0+x.y;
     if (x.c0>=256) {
-        x.c8=(x.c8<<8)+(x.c0&0xff);	
+        x.c8=(x.c8<<8)+(x.c0&0xff);
         x.c4=U32(x.c8);
         x.c0=1;
         ++x.blpos;
@@ -3222,9 +3261,11 @@ void update() {
         if ((fails&255)==0) {
             const int mx0Limit=256+(((fails>>8)&255)==0?32:0);
             //const int mx1Limit=16+(((fails>>8)&255)==0?16:0);
-            for (int i=1;i<9;i++) if (i!=7)mxA[i].elim=max(mx0Limit,mxA[i].elim+1);
-        }else{ 
-            for (int i=1;i<9;i++) if (i!=7)mxA[i].elim=min(16,mxA[i].elim-1);
+            for (int i=1;i<9;i++) mxA[i].elim=max(mx0Limit,mxA[i].elim+1);
+            for (int i=1;i<9;i++) mxAX[i].elim=max(mx0Limit,mxA[i].elim+1);
+        } else {
+            for (int i=1;i<9;i++) mxA[i].elim=min(16,mxA[i].elim-1);
+            for (int i=1;i<9;i++) mxAX[i].elim=min(16,mxA[i].elim-1);
         }
         // APM update rate based on input file position
         rate=6 + (x.blpos>14*256*1024) + (x.blpos>28*512*1024);
@@ -3234,19 +3275,14 @@ void update() {
     x.c0shift_bpos=(x.c0<<1)^(256>>(x.bposshift));
     x.cmBitState=getStateByteLocation(x.bpos,x.c0);
     //mxA[0].update(x.y);
-    mxA[1].update(x.y);
-    mxA[2].update(x.y);
-    mxA[3].update(x.y);
-    mxA[4].update(x.y);
-    mxA[5].update(x.y);
-    mxA[6].update(x.y);
-    mxA[7].update(x.y);
-    mxA[8].update(x.y);
-    mxA[9].update(x.y);
+    for (int i=1;i<10;i++) mxA[i].update(x.y);
+    for (int i=1;i<9;i++) mxAX[i].update(x.y);
+
     //if (x.blpos<2)printf("mixer 0 predictor count %d\n",x.mxInputs[0].ncount);
     x.mxInputs[0].ncount=0;
     //printf("mixer 1 predictor count %d\n",x.mxInputs[1].ncount);
     x.mxInputs[1].ncount=0;
+    x.mxInputs[2].ncount=0;
     // This part is from paq8hp12
     if (fails&0x00000080) --failcount;
     fails=fails*2;
