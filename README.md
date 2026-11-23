@@ -20,6 +20,8 @@ Sorted by compressed size.
 |paq8px_v208fix1 -8|100000000|16499082|23498|2163|
 |[paq8px_v217 -8](https://github.com/hxim/paq8px/tree/553024fcb4a5a4dfa16204d0313fd4ee43e5a8ac)|100000000|16379368|19236|2182|
 |[fxcm_text v1](https://github.com/kaitz/fxcm/releases/tag/text_v1)|100000000|16371534|2341|1842|
+|[fxcm_text v2](https://github.com/kaitz/fxcm/releases/tag/text_v2)|100000000|16330527|2469|1843|
+
 
 ## enwik9
 Sorted by compressed size.
@@ -34,6 +36,7 @@ Sorted by compressed size.
 |fxcm v17|1000000000|133973860|27124|1832|
 |fxcm v15|1000000000|133766633|24533|1834|
 |[fxcm_text v1](https://github.com/kaitz/fxcm/releases/tag/text_v1)|1000000000|132351518|22594|1842|
+|[fxcm_text v2](https://github.com/kaitz/fxcm/releases/tag/text_v2)|1000000000|131912662|23933|1843|
 
 ## enwik8 + transforms
 | |Transforms|Size|Compressed|Time sec|Memory MB
